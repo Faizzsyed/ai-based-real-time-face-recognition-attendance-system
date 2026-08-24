@@ -1,159 +1,224 @@
 # AI Based Real-Time Face Recognition Attendance System
 
-A Python-based academic attendance management system combining real-time face recognition, challenge-response liveness, role-based academic workflows, and attendance analytics.
+<p align="center">
+  <strong>A Python-based college Major Project combining real-time face recognition, challenge-response liveness, role-based academic management, attendance workflows, and analytics.</strong>
+</p>
+
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white">
+  <img alt="Flet" src="https://img.shields.io/badge/Flet-0.86-02569B">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white">
+  <img alt="MongoDB" src="https://img.shields.io/badge/MongoDB-PyMongo-47A248?logo=mongodb&logoColor=white">
+  <img alt="OpenCV" src="https://img.shields.io/badge/OpenCV-4.13-5C3EE8?logo=opencv&logoColor=white">
+  <img alt="MediaPipe" src="https://img.shields.io/badge/MediaPipe-Face_Landmarker-4285F4">
+  <img alt="YuNet" src="https://img.shields.io/badge/Detection-YuNet-6C5CE7">
+  <img alt="SFace" src="https://img.shields.io/badge/Recognition-SFace-00A8A8">
+</p>
 
 ## Overview
 
-This college Major Project is a Python-based rebuild and evolution of an earlier web attendance concept. It uses a Flet desktop client, a FastAPI REST backend, and MongoDB persistence. The application covers institution-scoped academic setup, timetable-driven attendance, Faculty-reviewed AI suggestions, encrypted biometric enrollment, and role-specific reporting.
+AttendAI is a college Major Project and a Python-based evolution of an earlier web attendance concept. It is not simply a face-detection demo: it brings academic structure, Students and Faculty, timetable scheduling, attendance sessions, manual and AI-assisted attendance, biometric enrollment, liveness checks, and reporting into one integrated application.
 
-The project is designed as an educational system and portfolio implementation. Its liveness controls are development-grade and are not certified presentation-attack detection.
+The system uses a responsive Flet desktop client, a FastAPI REST backend, and generic MongoDB persistence. AI output remains a suggestion until Faculty review and submission, keeping the official attendance record under human control.
 
-## Key features
+## Application Preview
 
-### Academic management
+No public-safe application screenshots are currently stored in this repository. The only images found during the README audit were private enrollment captures under Git-ignored biometric storage; they are intentionally not published or used here.
 
-- Institution and academic-year configuration
-- Departments, programs, semesters, classes/divisions, and subjects
-- Student and Faculty account management
+The following real application views are the recommended capture set. Add them only after confirming that each uses demo data and contains no face image, password, token, database URI, secret, private path, or identifying personal information:
+
+1. Admin Dashboard
+2. Face Enrollment Student list, including enrollment status, actions, and privacy notice
+3. Faculty Take Attendance or Manual Attendance
+4. Reports & Analytics
+5. Student Dashboard
+6. Academic Management or Timetable
+
+Reserved locations use descriptive filenames under `assets/readme/screenshots/`, such as `admin-dashboard.png`, `face-enrollment.png`, `faculty-attendance.png`, and `reports-analytics.png`. No concept mockup is presented as a real application screenshot.
+
+## Key Features
+
+### Academic Management
+
+- Institution-scoped setup and access
+- Academic years, Departments, Programs, and Semesters
+- Classes and divisions, Subjects, Students, and Faculty
 - Faculty teaching assignments
 - Recurring, timezone-aware timetable
 
 ### Attendance
 
-- Timetable-backed attendance sessions with immutable roster snapshots
-- Manual marking with Present, Absent, Late, and Excused states
-- AI-assisted face attendance suggestions
-- Faculty review before submission
-- Draft, submitted, reopened, and locked lifecycle
-- Finalized attendance history and administrative correction controls
+- Manual attendance with Present, Absent, Late, and Excused states
+- Timetable-backed `AttendanceSession` workflow with roster snapshots
+- Faculty review and submission of manual or AI-assisted marks
+- Attendance history and controlled administrative corrections
+- Finalized attendance as the reporting source of truth
 
-### Face recognition
+### AI Face Recognition
 
-- Integrated OpenCV webcam preview
-- YuNet face detection and SFace recognition
-- Three independent, quality-checked enrollment captures
-- Same-person consistency validation
-- Normalized, AES-256-GCM-encrypted face templates
-- Roster-scoped identification instead of institution-wide matching
-- Specific Student 1:1 verification and roster-scoped 1:N identification
+- OpenCV real-time webcam capture
+- YuNet face detection and SFace identity comparison
+- Multi-frame, quality-checked face enrollment
+- Same-person consistency validation across independent captures
+- Roster-scoped matching instead of institution-wide identification
+- Normalized, AES-256-GCM-encrypted biometric templates
 
-### Liveness
+### Liveness Verification
 
 - MediaPipe Face Landmarker signals
-- Session-calibrated adaptive blink detection
-- Randomized, ordered blink/head-turn challenge-response
-- Left/right turn and return-to-center checks
-- Face continuity, timeout, retry, and multiple-face handling
+- Adaptive blink calibration
+- Randomized challenge sequence
+- Blink and head-turn challenges
+- Return-to-center verification
+- Face continuity, retry, timeout, and multiple-face handling
 
-> **Development-grade liveness; not certified presentation-attack detection.**
+> **Development-grade challenge-response liveness.** It is not certified anti-spoofing or certified presentation-attack detection.
 
-### Reports and analytics
+### Reports & Analytics
 
-- Institution-scoped Admin overview and drill-downs
+- Institution-scoped Admin reports
 - Assignment-scoped Faculty reports
-- Student self-only attendance analytics
-- Finalized-session-only percentages
-- Subject and source analytics
-- Low-attendance detection and searchable pagination
-- Safe CSV exports for authorized report scopes
+- Student self-only reports
+- Low-attendance identification
+- Subject and attendance-source analytics
+- Session-level analytics
+- Authorized CSV export
 
-### Security
+## Face Enrollment Flow
+
+```mermaid
+flowchart LR
+    A[Admin] --> B[Select Student]
+    B --> C[Record Consent]
+    C --> D[Camera]
+    D --> E[Face Quality Checks]
+    E --> F[Liveness Challenge]
+    F --> G[Neutral Stabilization]
+    G --> H[Three Independent Captures]
+    H --> I[SFace Consistency]
+    I --> J[Encrypt Template]
+    J --> K[Enrollment Complete]
+```
+
+The preferred public screenshot for this workflow is the Student Face Enrollment list—not a webcam frame—with the caption: **Admin-managed biometric enrollment with encrypted face templates.**
+
+## Attendance Flow
+
+```mermaid
+flowchart LR
+    A[Faculty] --> B[Scheduled Lecture]
+    B --> C[Attendance Session]
+    C --> D{Attendance Method}
+    D -->|Manual| E[Manual Marks]
+    D -->|Face| F[AI Suggestions]
+    E --> G[Faculty Review]
+    F --> G
+    G --> H[Submit]
+    H --> I[Finalized Records]
+    I --> J[Reports]
+```
+
+Draft and reopened sessions do not affect official analytics. The finalized percentage is `(Present + Late) / (Present + Late + Absent) × 100`; Excused and unmarked records are excluded from the denominator.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    UI[Flet Desktop Application] --> API[FastAPI Backend]
+    API --> AUTH[Authentication / RBAC]
+    API --> ACADEMIC[Academic Services]
+    API --> ATTENDANCE[Attendance Services]
+    API --> REPORTS[Reports]
+    API --> FACE[Face AI]
+    FACE --> CV[OpenCV]
+    FACE --> MP[MediaPipe]
+    FACE --> YN[YuNet]
+    FACE --> SF[SFace]
+    AUTH --> DB[(MongoDB)]
+    ACADEMIC --> DB
+    ATTENDANCE --> DB
+    REPORTS --> DB
+    FACE --> DB
+```
+
+The Flet client does not connect directly to MongoDB. Authorization, biometric matching, template encryption, and reporting policy remain backend responsibilities.
+
+## Face AI Pipeline
+
+| Stage | Responsibility |
+| --- | --- |
+| OpenCV | Captures webcam frames and prepares image input |
+| YuNet | Detects faces and supplies face geometry |
+| MediaPipe Face Landmarker | Produces temporal evidence for blink and head-turn liveness challenges |
+| SFace | Creates identity embeddings and performs similarity comparison |
+
+SFace is used for identity recognition—not blink detection. Blink and head-turn evidence comes from MediaPipe landmarks over time.
+
+## Security & Privacy
 
 - Argon2id password hashing
 - Short-lived JWT access tokens
-- Opaque, rotating, revocable refresh sessions
-- Server-side RBAC and institution isolation
-- Backend-authorized Faculty and Student report scope
-- AES-256-GCM biometric-template encryption with tenant/student-bound authenticated data
-- No plaintext face embeddings exposed to the Flet client
-- Private enrollment images and environment files excluded from Git
+- Opaque refresh tokens with server-side hashing, rotation, revocation, and reuse handling
+- Server-enforced role-based access control
+- Institution isolation across academic and attendance data
+- AES-256-GCM-encrypted biometric embeddings with contextual authenticated data
+- Plaintext embeddings are never returned to the Flet client
+- Approved enrollment images remain in private, Git-ignored development storage
+- `.env`, logs, captures, exports, model binaries, and biometric data are excluded from Git
 
-## Technology stack
+> Biometric consent, retention, and deletion policies require formalization before production deployment.
+
+Production use would also require stronger key management, filesystem permissions, monitoring, incident response, security testing, and applicable legal/privacy review.
+
+## Technology Stack
 
 | Layer | Technology |
 | --- | --- |
 | Language | Python 3.11 |
 | Desktop UI | Flet 0.86.5 |
-| API | FastAPI 0.141.1, Uvicorn |
-| Database | MongoDB, PyMongo 4.17 |
-| Face pipeline | OpenCV 4.13, YuNet, SFace |
-| Landmark/liveness | MediaPipe 0.10 |
-| Authentication | PyJWT, Argon2id |
-| Encryption | `cryptography`, AES-256-GCM |
-| Testing | Pytest, FastAPI TestClient |
+| Backend API | FastAPI 0.141.1 + Uvicorn |
+| Database | MongoDB + PyMongo 4.17 |
+| Camera | OpenCV 4.13 |
+| Face Detection | YuNet |
+| Face Recognition | SFace |
+| Liveness | MediaPipe Face Landmarker 0.10 |
+| Authentication | JWT access tokens + refresh-token rotation |
+| Password Security | Argon2id |
+| Biometric Encryption | `cryptography` + AES-256-GCM |
+| Testing | Pytest + FastAPI TestClient |
 
-## System architecture
-
-```mermaid
-flowchart TD
-    UI[Flet Desktop UI] --> API[FastAPI REST API]
-    API --> AUTH[Authentication and RBAC]
-    API --> ACADEMIC[Academic Management]
-    API --> ATTENDANCE[Attendance Service]
-    API --> REPORTS[Reporting Service]
-    API --> FACE[Face AI Service]
-    FACE --> CV[OpenCV / YuNet / SFace]
-    FACE --> MP[MediaPipe Face Landmarker]
-    AUTH --> DB[(MongoDB)]
-    ACADEMIC --> DB
-    ATTENDANCE --> DB
-    REPORTS --> DB
-    FACE --> ENC[Normalized embedding → AES-256-GCM]
-    ENC --> DB
-    FACE --> PRIVATE[Approved local enrollment images]
-    PRIVATE -. Git-ignored private directory .-> PRIVATE
-```
-
-The client never connects directly to MongoDB. Biometric matching, encryption, authorization, and reporting policy remain backend responsibilities.
-
-## Attendance workflow
+## Project Structure
 
 ```text
-Faculty → Scheduled lecture → Attendance Session
-        → Manual marking or Face Attendance
-        → AI suggestions where applicable
-        → Faculty review → Submit
-        → Finalized attendance → Reports
+AttendAI-Python/
+├── app/
+│   ├── components/       # Reusable Flet controls
+│   ├── screens/          # Admin, Faculty, Student, and auth views
+│   ├── services/         # API, camera, biometric, and liveness clients
+│   └── test_*.py         # Flet/client tests
+├── backend/
+│   ├── app/
+│   │   ├── api/          # HTTP endpoints
+│   │   ├── core/         # Configuration, security, and errors
+│   │   ├── db/           # MongoDB connection and indexes
+│   │   └── modules/      # Domain services and repositories
+│   └── tests/            # Backend tests
+├── scripts/              # Setup, model download, run, and verification tools
+├── models/               # Downloaded locally; model binaries are Git-ignored
+├── docs/                 # Architecture and milestone documentation
+└── assets/
+    └── readme/           # Hero, screenshot, and diagram assets
 ```
 
-Draft and reopened sessions do not affect official analytics. The centralized official percentage is:
+## Windows Installation
 
-```text
-(Present + Late) / (Present + Late + Absent) × 100
-```
-
-Excused and unmarked records are excluded from the denominator.
-
-## Face enrollment workflow
-
-```text
-Admin → Select Student → Record consent → Camera
-      → Face quality → Liveness → Neutral stability
-      → Three independent captures → Same-person consistency
-      → Normalized SFace template → Encryption → Enrollment
-```
-
-Raw biometric samples are not included in this repository.
-
-## Face attendance workflow
-
-```text
-Faculty → Real Attendance Session → Roster-scoped candidates
-        → Liveness → SFace comparison
-        → AI Suggested Present → Faculty review → Submit
-```
-
-Specific Student mode performs 1:1 verification. All Students mode performs 1:N identification only against the active session roster.
-
-## Windows local setup
-
-Prerequisites: Python 3.11, MongoDB Community Server or an authorized MongoDB deployment, Git, and a supported webcam for biometric workflows.
+Prerequisites: Python 3.11, Git, MongoDB Community Server or another authorized MongoDB deployment, and a supported webcam for biometric workflows.
 
 ```powershell
 git clone https://github.com/Faizzsyed/ai-based-real-time-face-recognition-attendance-system.git
 cd ai-based-real-time-face-recognition-attendance-system
 
-py -3.11 -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
 pip install -r backend\requirements.txt
@@ -163,7 +228,7 @@ Copy-Item .env.example .env
 python scripts\download_face_models.py
 ```
 
-Edit `.env` locally before starting the application. Generate independent random values for `JWT_SECRET` (at least 32 bytes) and `FACE_EMBEDDING_ENCRYPTION_KEY` (exactly 32 bytes or its valid encoded representation). Never commit `.env`.
+Configure the new development database and independent random secrets in the local `.env`. Never commit that file. The model downloader obtains checksum-pinned YuNet, SFace, and MediaPipe assets and verifies their size and SHA-256 digest.
 
 Start the backend in one PowerShell terminal:
 
@@ -171,94 +236,93 @@ Start the backend in one PowerShell terminal:
 .\scripts\run_backend.ps1
 ```
 
-Start the Flet desktop client in another:
+Start the desktop application in another:
 
 ```powershell
 .\scripts\run_app.ps1
 ```
 
-## MongoDB and first Admin
+## Initial Admin Setup
 
-Configure the new development database only through environment variables:
-
-```text
-MONGODB_URI=mongodb://127.0.0.1:27017/
-MONGODB_DATABASE=attendai_python_dev
-```
-
-The bootstrap script is interactive: it shows the target database, validates an IANA timezone, asks the operator to choose credentials locally, and requires the exact confirmation `YES`.
+The first Institution and Admin are created with an interactive, guarded bootstrap script:
 
 ```powershell
 .\.venv\Scripts\python.exe .\scripts\bootstrap_institution_admin.py
 ```
 
-It refuses known legacy database names and is never run automatically. No default Admin password is provided.
-
-## Face model setup
-
-YuNet, SFace, and MediaPipe model assets are generated/downloaded dependencies and are intentionally not tracked. Download them from their official upstream locations through the checksum-pinned helper:
-
-```powershell
-python scripts\download_face_models.py
-```
-
-The script verifies file size and SHA-256 before accepting each model. Existing local model files are not removed by Git setup.
+The script displays the target database, refuses known legacy database names, validates the IANA timezone, securely prompts for a password without echoing it, and requires the exact confirmation `YES`. It does not provide or publish default credentials and is never run automatically.
 
 ## Testing
 
-Run the complete compile, backend, import, and Flet regression suite:
+Run the complete compile, backend, import, and Flet/client verification workflow:
 
 ```powershell
 .\scripts\verify_project.ps1
 ```
 
-At the Phase 12 GitHub milestone, the local automated suite contained **261 passing tests** with zero failures. This is a milestone-specific checkpoint, not a permanent badge or accuracy claim.
+### Phase 12 milestone snapshot
 
-## Screenshots
+| Suite | Result |
+| --- | ---: |
+| Backend | 163 passed |
+| Flet/client | 98 passed |
+| **Total** | **261 passed** |
+| Failures | 0 |
 
-The repository reserves [`assets/screenshots/`](assets/screenshots/) for public-safe UI screenshots. Screenshots containing passwords, tokens, database configuration, private face images, or identifiable biometric data are intentionally not included. Suitable screenshots may be added later after explicit privacy review.
+This is a milestone snapshot, not a permanently current badge and not a claim about face-recognition accuracy.
 
-## Privacy and biometric data
+## Project Status
 
-- Face embeddings are normalized and encrypted before database storage.
-- Plaintext embeddings and encryption keys are not exposed to Flet.
-- Approved enrollment photos are local/private development data under `data/face_enrollments/`.
-- Environment files, biometric images, logs, captures, exports, and model binaries are Git-ignored.
-- Production deployment requires finalized consent, retention, deletion, filesystem-permission, key-management, and incident-response policies.
+### Verified through Phase 12
 
-## Current limitations
+- Real local MongoDB operation
+- Admin authentication
+- Manual attendance workflow
+- Real-webcam enrollment of the designated development test Student
+- Encrypted enrollment storage
+- Reports and analytics
+- Backend and Flet/client automated suites
 
-- Phase 11 liveness is development-grade and not ISO/IEC 30107 certified.
-- The project does not claim to defeat sophisticated replay, deepfake, injection, or 3D-mask attacks.
-- Final second-person, wrong-person, and unknown-person real-world biometric verification remains pending.
+### Pending final real-world validation
+
+- Enrollment of a second physically different person
+- Unknown-person rejection
+- Wrong-person 1:1 verification
+- Printed-photo and replay testing for Phase 11 liveness
+- Android APK/AAB packaging
+- Deployment and production hardening
+
+## Current Limitations
+
+- Liveness is development-grade and is not ISO/IEC 30107-certified presentation-attack detection.
+- The project does not claim resistance to sophisticated replay, deepfake, injection, or 3D-mask attacks.
+- Final multi-person and negative-case biometric validation remains pending as listed above.
 - PDF reporting is deferred; authorized CSV export is implemented.
-- Android APK/AAB packaging and deployment remain future work.
-- Production deployment, load, security, and multi-institution hardening remain future work.
-- No 100% recognition-accuracy claim is made.
+- No production-readiness or 100% recognition-accuracy claim is made.
 
 ## Roadmap
 
-Completed milestones:
+- **Completed:** Phases 0–12
+- **Phase 13:** Requests, Notifications & Audit
+- **Phase 14:** Android APK/AAB
+- **Phase 15:** Web & Deployment Readiness
+- **Phase 16:** Final Hardening & Release
 
-- Foundation and responsive role-based UI
-- Academic architecture and authentication
-- Academic, Student, and Faculty management
-- Timetable and manual attendance
-- Face enrollment and roster-scoped face attendance
-- Development liveness hardening
-- Reports and analytics
+## Major Project
 
-Upcoming:
-
-- **Phase 13:** Requests, notifications, and audit experience
-- **Phase 14:** Android APK/AAB packaging
-- **Phase 15:** Web and deployment readiness
-- **Phase 16:** Final hardening, load testing, multi-institution verification, and release preparation
+This system is being developed as a college Major Project focused on combining computer vision, secure academic workflows, and attendance management in one integrated Python application.
 
 ## Documentation
 
-Detailed technical notes are available under [`docs/`](docs/), including architecture, authentication, academic management, attendance, biometric workflows, performance, liveness, reports, and manual verification plans.
+Detailed design and verification notes are available under [`docs/`](docs/), covering architecture, authentication, academic management, attendance, biometric workflows, liveness, performance, reports, and manual test plans.
+
+## Author
+
+**Faiz Sayyed**
+
+- GitHub: [github.com/Faizzsyed](https://github.com/Faizzsyed)
+- LinkedIn: [linkedin.com/in/faizsayyed-tech](https://linkedin.com/in/faizsayyed-tech)
 
 ## License
 
-No open-source license has been selected yet. All rights remain with the project owner unless a license is added later.
+No open-source license has been selected. All rights remain with the project owner unless a license is added later.
