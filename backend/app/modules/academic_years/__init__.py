@@ -1,0 +1,1 @@
+"""Academic year domain module."""

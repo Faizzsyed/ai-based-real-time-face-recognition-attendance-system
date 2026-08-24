@@ -1,0 +1,1 @@
+"""Class division domain module."""
