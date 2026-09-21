@@ -1,5 +1,17 @@
 """AttendAI Pro premium Flet foundation with Phase 3 authentication."""
 
+import sys
+import os
+
+# Flet Android packaged runtime fix:
+# When packaged by flet, this main.py is at the root of the app, and the parent "app" package doesn't exist.
+# We create a fake "app" module pointing to the current root, so "from app.components import X" works.
+if 'app' not in sys.modules:
+    from types import ModuleType
+    app_module = ModuleType('app')
+    app_module.__path__ = [os.path.dirname(os.path.abspath(__file__))]
+    sys.modules['app'] = app_module
+
 from collections.abc import Callable
 from datetime import date,timedelta
 import asyncio
