@@ -93,6 +93,19 @@ Reserved locations use descriptive filenames under `assets/readme/screenshots/`,
 
 Automated tests cover API contracts, role boundaries, notification privacy routes, audit redaction, and Phase 13 view construction. Manual Student → Faculty → Student verification remains pending.
 
+### Android client (Phase 14)
+
+The Flet client has a responsive Android layout: compact headers, a scrollable public/login shell, drawer navigation, and scrollable workflow pages. The default desktop backend remains `http://127.0.0.1:8000`. On Android, use the Server settings action on the public header to enter a reachable development backend URL; use HTTPS outside deliberately configured local development.
+
+Build development artifacts with the pinned Flet Flutter SDK:
+
+```powershell
+.\scripts\build_android.ps1 -Target apk
+.\scripts\build_android.ps1 -Target aab
+```
+
+The Android client uses the system photo picker for real image bytes sent to the existing authenticated backend face endpoints. Desktop OpenCV preview and Python MediaPipe liveness remain desktop-only; Android live preview/client-side liveness is intentionally not claimed without a supported Flet camera extension.
+
 ## Face Enrollment Flow
 
 ```mermaid

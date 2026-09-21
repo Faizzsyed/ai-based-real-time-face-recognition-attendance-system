@@ -43,6 +43,7 @@ from app.services.api_client import ApiClient
 from app.services.camera_service import CameraService,CameraUnavailable
 from app.services.biometric_pipeline import BiometricPipeline,BiometricState,BlinkChallenge,FaceObservation,MediaPipeBlinkDetector
 from app.services.liveness_challenge import LivenessChallengeEngine
+from app.services.platform_capabilities import current_platform
 from app.state.auth_state import AuthState
 
 PREVIEW_ROLES = ("Admin", "Faculty", "Student")
@@ -112,11 +113,13 @@ def build_public_shell(
     api_connected: bool,
     on_theme_toggle: Callable,
     on_api_check: Callable,
+    compact: bool = False,
+    on_server_settings: Callable | None = None,
 ) -> ft.Control:
     top_bar = ft.Container(
-        content=ft.Row(
+        content=ft.ResponsiveRow(
             [
-                ft.Row(
+                ft.Container(ft.Row(
                     [
                         ft.Container(
                             ft.Icon(ft.Icons.SCHOOL_OUTLINED, size=18, color=tokens["on_accent"]),
@@ -126,31 +129,32 @@ def build_public_shell(
                             gradient=ft.LinearGradient(colors=[tokens["primary"], tokens["secondary"]]),
                             border_radius=11,
                         ),
-                        ft.Text("AI Face Attendance", weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
+                        ft.Text("AI Attendance" if compact else "AI Face Attendance", weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
                     ],
                     spacing=10,
-                ),
-                ft.Row(
+                ),col={"xs":8,"sm":6}),
+                ft.Container(ft.Row(
                     [
-                        api_status_badge(api_connected, tokens),
+                        *([] if compact else [api_status_badge(api_connected, tokens)]),
                         ft.IconButton(
                             ft.Icons.DARK_MODE_OUTLINED if tokens["mode"] == "light" else ft.Icons.LIGHT_MODE_OUTLINED,
                             tooltip="Toggle light/dark theme",
                             on_click=on_theme_toggle,
                         ),
                         ft.IconButton(ft.Icons.REFRESH, tooltip="Check API", on_click=on_api_check),
+                        *([ft.IconButton(ft.Icons.DNS_OUTLINED,tooltip="Server settings",on_click=on_server_settings)] if on_server_settings else []),
                     ],
                     spacing=3,
-                ),
+                ),col={"xs":4,"sm":6}),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         ),
-        padding=ft.Padding.symmetric(horizontal=18, vertical=10),
+        padding=ft.Padding.symmetric(horizontal=12 if compact else 18, vertical=10),
         bgcolor=tokens["surface"],
         border=ft.Border.only(bottom=ft.BorderSide(1, tokens["border"])),
     )
     return ft.Column(
-        [top_bar, ft.Container(content, expand=True)],
+        [top_bar, ft.Container(ft.Column([content],scroll=ft.ScrollMode.AUTO,expand=True), expand=True)],
         spacing=0,
         expand=True,
         key="public-shell",
@@ -169,6 +173,7 @@ def build_authenticated_top_bar(
     view_label: str = "Dashboard",
     unread_count: int = 0,
     on_notifications: Callable | None = None,
+    compact: bool = False,
 ) -> ft.Control:
     return ft.Container(
         content=ft.ResponsiveRow(
@@ -179,8 +184,8 @@ def build_authenticated_top_bar(
                             ft.IconButton(ft.Icons.MENU, tooltip="Toggle navigation", on_click=on_sidebar_toggle),
                             ft.Column(
                                 [
-                                    ft.Text(view_label, size=17, weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
-                                    ft.Text(f"{role} / {view_label}", size=11, color=tokens["text_secondary"]),
+                                    ft.Text(view_label, size=16 if compact else 17, weight=ft.FontWeight.BOLD, color=tokens["text_primary"],max_lines=1,overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text(role if compact else f"{role} / {view_label}", size=11, color=tokens["text_secondary"]),
                                 ],
                                 spacing=1,
                             ),
@@ -192,7 +197,7 @@ def build_authenticated_top_bar(
                 ft.Container(
                     ft.Row(
                         [
-                            api_status_badge(api_connected, tokens),
+                            *([] if compact else [api_status_badge(api_connected, tokens)]),
                             ft.IconButton(
                                 ft.Icons.DARK_MODE_OUTLINED if tokens["mode"] == "light" else ft.Icons.LIGHT_MODE_OUTLINED,
                                 tooltip="Toggle light/dark theme",
@@ -282,12 +287,26 @@ class PremiumUiController:
         settings=get_settings();profile="blink" if settings.face_liveness_challenge_mode.casefold()=="blink" else "enrollment" if self.camera_context=="enrollment" else "attendance";return LivenessChallengeEngine(self.biometric_pipeline.blink,profile,settings.face_liveness_pose_timeout_seconds,settings.face_liveness_pose_delta,settings.face_liveness_pose_center_tolerance,settings.face_liveness_pose_frames,settings.face_liveness_face_loss_grace_ms/1000,enrollment_steps=settings.face_liveness_enrollment_steps,attendance_steps=settings.face_liveness_attendance_steps)
 
     @property
+    def platform_capabilities(self): return current_platform(getattr(self.page,"platform",None))
+    @property
+    def compact_layout(self): return (self.page.width or 0)<600
+
+    @property
     def tokens(self) -> ThemeTokens:
         return tokens_for_mode(self.page.theme_mode)
 
     def check_api(self, _: ft.ControlEvent | None = None) -> None:
         self.api_connected = self.api_client.health_check().connected
         self.render_current()
+
+    def open_server_settings(self, _: ft.ControlEvent | None = None) -> None:
+        endpoint=ft.TextField(label="Backend URL",value=self.api_client.base_url,keyboard_type=ft.KeyboardType.URL,autofocus=True)
+        notice=ft.Text("For local Android development, use your development server's HTTPS URL. HTTP is accepted only when the development configuration permits it.",size=12,color=self.tokens["text_secondary"])
+        def save(_):
+            if not self.api_client.set_base_url(endpoint.value or ""):
+                endpoint.error_text="Enter a complete http:// or https:// server URL.";endpoint.update();return
+            self.page.pop_dialog();self.check_api()
+        self.page.show_dialog(ft.AlertDialog(modal=True,title=ft.Text("Server settings"),content=ft.Column([endpoint,notice],tight=True,scroll=ft.ScrollMode.AUTO),actions=[ft.TextButton("Cancel",on_click=lambda _:self.page.pop_dialog()),ft.FilledButton("Save & retry",on_click=save)]))
 
     def toggle_theme(self, _: ft.ControlEvent | None = None) -> None:
         self.page.theme_mode = (
@@ -570,10 +589,12 @@ class PremiumUiController:
             if reference.connected:(student.setdefault("face",{}))["referenceImage"]=(reference.data or {}).get("content")
         self.stop_camera();self.camera_context="enrollment";self.camera_student=student;self.camera_consent=False;self.camera_frames=[];self.camera_capture_sequences=[];self._capture_retries=0;self._final_validation_retries=0;self._enrollment_finalizing=False;self.biometric_pipeline=self._new_biometric_pipeline();self.camera_panel_state=CameraPanelState()
         async def choose_frames(_):await self.select_face_frames(student)
-        panel=build_camera_panel(self.camera_panel_state,self.tokens,self.start_camera,self.stop_camera,f"Face Enrollment — {student.get('display_name','Student')}",self.retry_liveness)
+        panel=build_camera_panel(self.camera_panel_state,self.tokens,self.start_camera,self.stop_camera,f"Face Enrollment — {student.get('display_name','Student')}",self.retry_liveness,self.platform_capabilities.is_android)
         self.page.show_dialog(ft.AlertDialog(content=build_face_enrollment_dialog(student,self.tokens,choose_frames,lambda _:self.enroll_face_profile(student),lambda _:self.remove_face_enrollment(student),lambda _:self.close_face_dialog(),panel,lambda value:setattr(self,"camera_consent",value)),modal=True))
 
     async def start_camera(self,_=None):
+        if not self.platform_capabilities.desktop_camera:
+            self.camera_panel_state.camera="unavailable";self.camera_panel_state.message="Live preview and client liveness are desktop-only. Select a recent camera photo for server-side face analysis.";self.camera_panel_state.sync();self.page.update();return
         if self.camera_context=="enrollment" and not self.camera_consent:self.camera_panel_state.message="Confirm consent before starting the camera.";self.camera_panel_state.sync();self.page.update();return
         if self.camera_context=="attendance" and self.face_recognition_mode=="specific" and not self.face_selected_student_id:self.camera_panel_state.message="Select the Student to verify before starting.";self.camera_panel_state.sync();self.page.update();return
         try:
@@ -1128,7 +1149,7 @@ class PremiumUiController:
     def render_public(self) -> None:
         tokens = self.tokens
         if self.current_screen == "splash":
-            content = build_splash(self.show_login, tokens)
+            content = build_splash(self.show_login, tokens, self.compact_layout)
         else:
             content = build_login(
                 self.show_preview,
@@ -1138,6 +1159,7 @@ class PremiumUiController:
                 on_login=self.handle_login,
                 auth_loading=self.auth_state.loading,
                 auth_error=self.auth_state.error,
+                compact=self.compact_layout,
             )
         self.host.content = build_public_shell(
             content,
@@ -1145,6 +1167,8 @@ class PremiumUiController:
             api_connected=self.api_connected,
             on_theme_toggle=self.toggle_theme,
             on_api_check=self.check_api,
+            compact=self.compact_layout,
+            on_server_settings=self.open_server_settings,
         )
         self.page.update()
 
@@ -1188,6 +1212,7 @@ class PremiumUiController:
                 view_label=self.active_navigation,
                 unread_count=self.notification_unread,
                 on_notifications=lambda _:self.select_navigation("Notifications"),
+                compact=self.compact_layout,
             )
         ]
         if developer_strip:
@@ -1205,7 +1230,7 @@ class PremiumUiController:
         elif self.current_role=="Admin" and self.active_navigation=="Face Enrollment" and self.face_enrollment_state is not None:
             content=build_face_enrollment_page(self.face_enrollment_state,tokens,lambda value:self.load_face_enrollments(search=value),self.filter_face_enrollments,self.open_face_enrollment)
         elif self.current_role=="Faculty" and self.active_navigation in {"Take Attendance","Attendance History"}:
-            camera_panel=build_camera_panel(self.camera_panel_state,tokens,self.start_camera,self.stop_camera,"Live Attendance Camera") if self.current_attendance and self.attendance_mode=="face" else None
+            camera_panel=build_camera_panel(self.camera_panel_state,tokens,self.start_camera,self.stop_camera,"Live Attendance Camera",mobile=self.platform_capabilities.is_android) if self.current_attendance and self.attendance_mode=="face" else None
             content=build_take_attendance(tokens,self.schedule_data,self.attendance_sessions,self.current_attendance,self.start_attendance,self.open_faculty_attendance,self.mark_attendance,self.save_attendance,self.review_attendance,self.attendance_notice,self.attendance_search,self.attendance_status_filter,self.filter_attendance_roster,self.attendance_mode,self.face_attendance_status_data,self.face_attendance_result,self.set_attendance_mode,self.capture_attendance_face,self.face_recognition_mode,self.face_selected_student_id,self.set_face_recognition_mode,self.set_face_selected_student,camera_panel,self.face_reference_image)
         elif self.current_role=="Student" and self.active_navigation=="Attendance":
             content=ft.Column([ft.Container(ft.FilledButton("Request Correction",icon=ft.Icons.EDIT_NOTE,on_click=self.open_attendance_request_form),padding=ft.Padding.only(left=24,top=12)),build_student_attendance(tokens,self.attendance_data,(self.attendance_data or {}).get("history"))],spacing=0,expand=True)

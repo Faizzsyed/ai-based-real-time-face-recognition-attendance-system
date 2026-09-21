@@ -11,7 +11,7 @@ from app.screens.auth.splash import attendai_emblem
 PHASE_NOTICE = "Preview sessions are UI-only and never create authentication tokens."
 
 
-def _academic_visual(tokens: ThemeTokens) -> ft.Control:
+def _academic_visual(tokens: ThemeTokens, compact: bool = False) -> ft.Control:
     nodes = [
         (ft.Icons.SCHOOL_OUTLINED, "Academic management"),
         (ft.Icons.FACT_CHECK_OUTLINED, "Attendance intelligence"),
@@ -19,8 +19,8 @@ def _academic_visual(tokens: ThemeTokens) -> ft.Control:
     ]
     return ft.Column(
         [
-            ft.Row([attendai_emblem(tokens, 62), ft.Text("AI Based Face Attendance", size=24, weight=ft.FontWeight.BOLD, color=tokens["text_primary"])], spacing=14),
-            ft.Text("Intelligent Attendance.\nSmarter Academics.", size=38, weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
+            ft.Row([attendai_emblem(tokens, 52 if compact else 62), ft.Text("AI Attendance" if compact else "AI Based Face Attendance", size=22 if compact else 24, weight=ft.FontWeight.BOLD, color=tokens["text_primary"])], spacing=12,wrap=True),
+            ft.Text("Intelligent Attendance.\nSmarter Academics.", size=30 if compact else 38, weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
             ft.Text("One secure foundation for institutional operations, academic insight, and future AI-assisted attendance.", size=14, color=tokens["text_secondary"]),
             ft.Column(
                 [
@@ -83,6 +83,7 @@ def build_login(
     on_login: Callable[[str, str], None] | None = None,
     auth_loading: bool = False,
     auth_error: str | None = None,
+    compact: bool = False,
 ) -> ft.Control:
     identifier = ft.TextField(label="Email / Username", prefix_icon=ft.Icons.PERSON_OUTLINED, key="login-identifier")
     password = ft.TextField(label="Password", prefix_icon=ft.Icons.LOCK_OUTLINED, password=True, can_reveal_password=True, key="login-password")
@@ -124,16 +125,16 @@ def build_login(
     return ft.Container(
         content=ft.ResponsiveRow(
             [
-                ft.Container(_academic_visual(tokens), col={"xs": 12, "md": 7}, padding=ft.Padding.symmetric(horizontal=18, vertical=24)),
-                ft.Container(login_card, col={"xs": 12, "md": 5}, padding=ft.Padding.symmetric(horizontal=8, vertical=18)),
+                ft.Container(_academic_visual(tokens,compact), col={"xs": 12, "md": 7}, padding=ft.Padding.symmetric(horizontal=12 if compact else 18, vertical=18 if compact else 24)),
+                ft.Container(login_card, col={"xs": 12, "md": 5}, padding=ft.Padding.symmetric(horizontal=0 if compact else 8, vertical=12 if compact else 18)),
             ],
             spacing=22,
             run_spacing=10,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        padding=ft.Padding.symmetric(horizontal=20, vertical=14),
+        padding=ft.Padding.symmetric(horizontal=16 if compact else 20, vertical=14),
         bgcolor=tokens["background"],
         alignment=ft.Alignment.CENTER,
-        expand=True,
+        expand=not compact,
         key="login-screen",
     )

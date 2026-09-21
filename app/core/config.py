@@ -6,6 +6,7 @@ from pathlib import Path
 class AppSettings(BaseSettings):
     app_env: str = "development"
     api_base_url: str = "http://127.0.0.1:8000"
+    allow_insecure_dev_api: bool = True
     enable_dev_academic_api: bool = False
     enable_dev_role_preview: bool = True
     log_level: str = "INFO"

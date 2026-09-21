@@ -4,7 +4,6 @@ import logging,math,statistics,time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-import cv2
 logger=logging.getLogger("LIVENESS")
 class BiometricState(str,Enum):
     IDLE="IDLE";CAMERA_STARTING="CAMERA_STARTING";SEARCHING_FACE="SEARCHING_FACE";MULTIPLE_FACES="MULTIPLE_FACES";FACE_FOUND="FACE_FOUND";STABILIZING="STABILIZING";QUALITY_CHECK="QUALITY_CHECK";LIVENESS_PROMPT="LIVENESS_PROMPT";LIVENESS_CALIBRATING="LIVENESS_CALIBRATING";LIVENESS_TRACKING="LIVENESS_TRACKING";LIVENESS_PASSED="LIVENESS_PASSED";RETURN_TO_NEUTRAL="RETURN_TO_NEUTRAL";STABILIZING_FOR_CAPTURE="STABILIZING_FOR_CAPTURE";CAPTURING="CAPTURING";IDENTITY_CONSISTENCY="IDENTITY_CONSISTENCY";RECOGNIZING="RECOGNIZING";IDENTIFIED="IDENTIFIED";UNKNOWN="UNKNOWN";AMBIGUOUS="AMBIGUOUS";COOLDOWN="COOLDOWN";ERROR="ERROR"
@@ -114,9 +113,12 @@ class BiometricPipeline:
     def cooldown(self):self.state=BiometricState.COOLDOWN
 class MediaPipeBlinkDetector:
     def __init__(self,model_path:Path):
+        from app.services.platform_capabilities import current_platform
+        if not current_platform().client_liveness: raise RuntimeError("Client-side MediaPipe liveness is unavailable on Android.")
         import mediapipe as mp
         vision=mp.tasks.vision;options=vision.FaceLandmarkerOptions(base_options=mp.tasks.BaseOptions(model_asset_path=str(model_path)),running_mode=vision.RunningMode.VIDEO,num_faces=2,output_face_blendshapes=True,min_face_detection_confidence=.5,min_face_presence_confidence=.5,min_tracking_confidence=.5);self._mp=mp;self._landmarker=vision.FaceLandmarker.create_from_options(options);self._last_timestamp=0
     def observe(self,bgr,timestamp_ms):
+        import cv2
         timestamp_ms=max(int(timestamp_ms),self._last_timestamp+1);self._last_timestamp=timestamp_ms;rgb=cv2.cvtColor(bgr,cv2.COLOR_BGR2RGB);result=self._landmarker.detect_for_video(self._mp.Image(image_format=self._mp.ImageFormat.SRGB,data=rgb),timestamp_ms)
         count=len(result.face_blendshapes)
         if count!=1:return EyeMetric(count,None,None,None)

@@ -31,10 +31,10 @@ def attendai_emblem(tokens: ThemeTokens, size: int = 84) -> ft.Control:
     )
 
 
-def build_splash(on_continue: Callable, tokens: ThemeTokens) -> ft.Control:
+def build_splash(on_continue: Callable, tokens: ThemeTokens, compact: bool = False) -> ft.Control:
     accent = ft.Container(
-        width=360,
-        height=360,
+        width=230 if compact else 360,
+        height=230 if compact else 360,
         right=-110,
         top=-120,
         border_radius=999,
@@ -46,7 +46,7 @@ def build_splash(on_continue: Callable, tokens: ThemeTokens) -> ft.Control:
         content=ft.Column(
             [
                 attendai_emblem(tokens),
-                ft.Text("AI Based Face Attendance", size=36, weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
+                ft.Text("AI Attendance" if compact else "AI Based Face Attendance", size=29 if compact else 36, weight=ft.FontWeight.BOLD, color=tokens["text_primary"],text_align=ft.TextAlign.CENTER),
                 ft.Text(
                     "AI-Powered Academic & Attendance Platform",
                     size=15,
@@ -75,7 +75,7 @@ def build_splash(on_continue: Callable, tokens: ThemeTokens) -> ft.Control:
             spacing=15,
         ),
         alignment=ft.Alignment.CENTER,
-        padding=24,
+        padding=16 if compact else 24,
         expand=True,
     )
     return ft.Container(

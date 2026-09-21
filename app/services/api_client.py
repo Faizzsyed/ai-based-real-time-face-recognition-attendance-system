@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Callable
-from urllib.parse import urlencode
+from urllib.parse import urlencode,urlparse
 import httpx,logging,time,threading
 from uuid import uuid4
 from app.core.config import get_settings
@@ -24,6 +24,12 @@ class ApiClient:
         self.logger=logging.getLogger("CLIENT")
         self._refresh_lock=threading.Lock()
         self._auth_loss_lock=threading.Lock();self._auth_loss_notified=False
+    def set_base_url(self, base_url: str) -> bool:
+        """Apply a user-selected development server only after conservative validation."""
+        value=base_url.strip().rstrip("/");parsed=urlparse(value)
+        if parsed.scheme not in {"http","https"} or not parsed.netloc:return False
+        if parsed.scheme=="http" and not get_settings().allow_insecure_dev_api:return False
+        self.base_url=value;return True
     def _log(self,message,*args):
         if get_settings().enable_api_request_logging:self.logger.info(message,*args)
     def _trace_headers(self,authenticated=False):

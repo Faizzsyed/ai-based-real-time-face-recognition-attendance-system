@@ -2,7 +2,7 @@
 from __future__ import annotations
 import logging,threading,time
 from dataclasses import dataclass
-import cv2
+from app.services.platform_capabilities import current_platform
 logger=logging.getLogger("CAMERA");perf_logger=logging.getLogger("PERF")
 class CameraUnavailable(RuntimeError):pass
 @dataclass(frozen=True)
@@ -24,11 +24,17 @@ class LatestFrameBuffer:
         with self._lock:self._frame=None
 class CameraService:
     def __init__(self,index=0,capture_factory=None,preview_fps=24,width=1280,height=720):
-        self.index=index;self.capture_factory=capture_factory or cv2.VideoCapture;self.preview_fps=max(1,min(int(preview_fps),30));self.width=int(width);self.height=int(height);self.frames=LatestFrameBuffer();self._capture=None;self._thread=None;self._stop=threading.Event();self._release_lock=threading.Lock();self._last_perf=0.;self._perf_frames=0;self.capture_fps=0.
+        self.index=index;self.capture_factory=capture_factory;self.preview_fps=max(1,min(int(preview_fps),30));self.width=int(width);self.height=int(height);self.frames=LatestFrameBuffer();self._capture=None;self._thread=None;self._stop=threading.Event();self._release_lock=threading.Lock();self._last_perf=0.;self._perf_frames=0;self.capture_fps=0.
     @property
     def running(self):return bool(self._thread and self._thread.is_alive())
     def start(self):
         if self.running:return
+        if not current_platform().desktop_camera: raise CameraUnavailable("Live desktop camera preview is unavailable on Android. Select a recent camera photo instead.")
+        try:
+            import cv2
+        except ImportError as exc:
+            raise CameraUnavailable("Desktop OpenCV camera support is unavailable.") from exc
+        if self.capture_factory is None:self.capture_factory=cv2.VideoCapture
         logger.info("[CAMERA] open requested index=%s",self.index);capture=self.capture_factory(self.index)
         if not capture or not capture.isOpened():
             if capture:capture.release()
@@ -55,6 +61,7 @@ class CameraService:
         finally:self._release()
     def raw_snapshot(self,after_sequence=-1):return self.frames.latest(after_sequence)
     def _encode(self,frame,max_width,quality):
+        import cv2
         started=time.perf_counter();image=frame.image;height,width=image.shape[:2]
         if width>max_width:
             scale=max_width/width;image=cv2.resize(image,(max_width,max(1,int(height*scale))),interpolation=cv2.INTER_AREA)
