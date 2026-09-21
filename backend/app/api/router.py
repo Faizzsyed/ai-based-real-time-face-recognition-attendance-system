@@ -38,6 +38,14 @@ def health() -> dict[str, object]:
     return payload
 
 
+from fastapi import HTTPException
+@router.get("/ready")
+def ready() -> dict[str, object]:
+    if mongo.status != "connected":
+        raise HTTPException(status_code=503, detail="Database not ready")
+    return {"success": True, "status": "ready"}
+
+
 @router.get("/system/info")
 def system_info() -> dict[str, object]:
     settings = get_settings()

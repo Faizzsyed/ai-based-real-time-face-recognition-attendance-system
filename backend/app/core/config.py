@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -58,6 +58,20 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[3] / ".env", extra="ignore"
     )
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.app_env.casefold() == "production":
+            if not self.mongodb_uri:
+                raise ValueError("MONGODB_URI is required in production")
+            if len(self.jwt_secret) < 32 or self.jwt_secret == "replace_with_at_least_32_random_characters":
+                raise ValueError("A secure JWT_SECRET (>= 32 characters) is required in production")
+            if self.face_ai_enabled and (len(self.face_embedding_encryption_key) != 32 or self.face_embedding_encryption_key == "replace_with_exactly_32_random_characters"):
+                raise ValueError("A secure 32-character FACE_EMBEDDING_ENCRYPTION_KEY is required in production when face AI is enabled")
+            origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+            if not origins or "*" in origins:
+                raise ValueError("CORS_ORIGINS must be explicitly configured in production (cannot be empty or '*')")
+        return self
 
 
 @lru_cache

@@ -39,6 +39,9 @@ async def request_observability(request:Request,call_next):
     if settings.enable_api_request_logging:safe_log(logger,logging.INFO,"request started",method=request.method,path=request.url.path)
     try:
         response=await call_next(request);duration=round((time.perf_counter()-started)*1000,2);response.headers["X-Request-ID"]=request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
         if settings.enable_api_request_logging:safe_log(logger,logging.INFO,"request finished",method=request.method,path=request.url.path,status=response.status_code,duration_ms=duration)
         return response
     except Exception:
