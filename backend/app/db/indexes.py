@@ -24,6 +24,7 @@ def initialize_phase2_indexes(database: Database) -> None:
     initialize_timetable_indexes(database)
     initialize_attendance_indexes(database)
     initialize_face_enrollment_indexes(database)
+    initialize_phase13_indexes(database)
 
 
 def initialize_auth_indexes(database: Database) -> None:
@@ -90,3 +91,18 @@ def initialize_face_enrollment_indexes(database: Database) -> None:
     enrollments.create_index([("institution_id",ASCENDING),("student_id",ASCENDING)],unique=True,name="uq_face_enrollment_student")
     enrollments.create_index([("institution_id",ASCENDING),("status",ASCENDING),("updated_at",ASCENDING)],name="ix_face_enrollment_status")
     enrollments.create_index([("institution_id",ASCENDING),("model_version",ASCENDING)],name="ix_face_enrollment_model")
+
+def initialize_phase13_indexes(database: Database) -> None:
+    requests=database.attendance_requests
+    requests.create_index([("institution_id",ASCENDING),("status",ASCENDING),("created_at",ASCENDING)],name="ix_request_status_created")
+    requests.create_index([("institution_id",ASCENDING),("student_id",ASCENDING),("created_at",ASCENDING)],name="ix_request_student_created")
+    requests.create_index([("institution_id",ASCENDING),("attendance_session_id",ASCENDING)],name="ix_request_session")
+    requests.create_index([("institution_id",ASCENDING),("student_id",ASCENDING),("attendance_session_id",ASCENDING)],unique=True,partialFilterExpression={"status":"pending"},name="uq_pending_request_per_student_session")
+    notifications=database.notifications
+    notifications.create_index([("institution_id",ASCENDING),("recipient_user_id",ASCENDING),("created_at",ASCENDING)],name="ix_notification_recipient_created")
+    notifications.create_index([("institution_id",ASCENDING),("recipient_user_id",ASCENDING),("read_at",ASCENDING)],name="ix_notification_recipient_read")
+    audit=database.audit_events
+    audit.create_index([("institution_id",ASCENDING),("created_at",ASCENDING)],name="ix_audit_created")
+    audit.create_index([("institution_id",ASCENDING),("actor_user_id",ASCENDING),("created_at",ASCENDING)],name="ix_audit_actor_created")
+    audit.create_index([("institution_id",ASCENDING),("entity_type",ASCENDING),("entity_id",ASCENDING)],name="ix_audit_entity")
+    audit.create_index([("institution_id",ASCENDING),("action",ASCENDING),("created_at",ASCENDING)],name="ix_audit_action_created")

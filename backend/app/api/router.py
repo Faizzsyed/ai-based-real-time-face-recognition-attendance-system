@@ -10,6 +10,9 @@ from app.api.timetable import router as timetable_router
 from app.api.attendance import router as attendance_router
 from app.api.face_enrollment import router as face_enrollment_router
 from app.modules.reports.router import router as reports_router
+from app.modules.requests.router import router as requests_router
+from app.modules.notifications.router import router as notifications_router
+from app.modules.audit.router import router as audit_router
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(dev_academic_router)
@@ -21,6 +24,9 @@ router.include_router(timetable_router)
 router.include_router(attendance_router)
 router.include_router(face_enrollment_router)
 router.include_router(reports_router)
+router.include_router(requests_router)
+router.include_router(notifications_router)
+router.include_router(audit_router)
 
 
 @router.get("/health")

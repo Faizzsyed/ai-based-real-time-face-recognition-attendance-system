@@ -37,6 +37,7 @@ from app.screens.faculty.dashboard import build_faculty_dashboard
 from app.screens.faculty.attendance import build_take_attendance
 from app.screens.student.dashboard import build_student_dashboard
 from app.screens.student.attendance import build_student_attendance
+from app.screens.phase13 import build_requests_page,build_notifications_page,build_audit_page
 from app.screens.reports import build_class_detail,build_reports,build_session_detail,build_student_detail
 from app.services.api_client import ApiClient
 from app.services.camera_service import CameraService,CameraUnavailable
@@ -166,6 +167,8 @@ def build_authenticated_top_bar(
     on_api_check: Callable,
     on_logout: Callable | None = None,
     view_label: str = "Dashboard",
+    unread_count: int = 0,
+    on_notifications: Callable | None = None,
 ) -> ft.Control:
     return ft.Container(
         content=ft.ResponsiveRow(
@@ -195,7 +198,7 @@ def build_authenticated_top_bar(
                                 tooltip="Toggle light/dark theme",
                                 on_click=on_theme_toggle,
                             ),
-                            ft.IconButton(ft.Icons.NOTIFICATIONS_NONE, tooltip="Notifications coming in Phase 13"),
+                            ft.Container(ft.IconButton(ft.Icons.NOTIFICATIONS if unread_count else ft.Icons.NOTIFICATIONS_NONE,tooltip=f"Notifications ({unread_count} unread)",on_click=on_notifications),badge=ft.Badge(label=ft.Text(str(unread_count))) if unread_count else None),
                             profile_avatar(role[:1], tokens),
                             *([ft.TextButton("Logout", icon=ft.Icons.LOGOUT, on_click=on_logout, key="authenticated-logout")] if on_logout else []),
                         ],
@@ -268,6 +271,9 @@ class PremiumUiController:
         self.face_reference_image: bytes | None = None
         self.admin_attendance_filter = "all"
         self.face_enrollment_state: FaceEnrollmentState | None = None
+        self.requests_data: dict = {};self.requests_loading=False;self.requests_error: str|None=None
+        self.notifications_data: dict = {};self.notifications_loading=False;self.notifications_error: str|None=None;self.notification_unread=0
+        self.audit_data: dict = {};self.audit_loading=False;self.audit_error: str|None=None
         camera_settings=get_settings();self.camera_service=CameraService(preview_fps=camera_settings.camera_preview_fps);self.camera_panel_state=CameraPanelState();self.camera_context=None;self.camera_student=None;self.camera_consent=False;self.camera_frames=[];self.camera_capture_sequences=[];self._capture_retries=0;self._final_validation_retries=0;self._enrollment_finalizing=False;self._camera_loop_running=False;self._camera_analysis_running=False;self._liveness_loop_running=False;self._recognition_running=False;self._capture_last_at=0.;self._neutral_since=None;self._neutral_anchor=None;self._latest_eyes_open=False;self._latest_eye_at=0.;self.blink_detector=None;self.biometric_pipeline=self._new_biometric_pipeline();self.liveness_engine=None
 
     def _new_biometric_pipeline(self):
@@ -381,6 +387,7 @@ class PremiumUiController:
                 self.faculty_profile_data=profile.data
                 schedule=self.api_client.faculty_timetable();self.schedule_data=schedule.data if schedule.connected and schedule.data else {"today":[],"week":[],"upcoming":[],"nextLecture":None}
                 sessions=self.api_client.faculty_attendance_sessions();self.attendance_sessions=(sessions.data or {}).get("items",[]) if sessions.connected else [];self.attendance_data={"sessions":self.attendance_sessions}
+            unread=self.api_client.notification_unread_count();self.notification_unread=int((unread.data or {}).get("count",0)) if unread.connected else 0
             self.show_authenticated(role)
         else:
             self.current_screen = "login"
@@ -397,6 +404,10 @@ class PremiumUiController:
     def select_navigation(self, label: str) -> None:
         if label!=self.active_navigation:self.stop_camera()
         log_ui_event("navigation selected",role=self.current_role,label=label)
+        if label=="Notifications" and self.current_role in {"Admin","Faculty","Student"}:
+            self.active_navigation=label;self.load_notifications();return
+        if label=="Requests" and self.current_role in {"Admin","Faculty","Student"}:
+            self.active_navigation=label;self.load_requests();return
         if self.current_role=="Faculty" and label in {"Dashboard","Today's Lectures","Timetable","Take Attendance","Attendance History","Reports"}:
             if label in {"Take Attendance","Attendance History"} and self.current_screen=="authenticated":self.load_faculty_attendance()
             if label=="Reports" and self.current_screen=="authenticated":self.load_reports()
@@ -404,7 +415,7 @@ class PremiumUiController:
         if self.current_role=="Student" and label in {"Dashboard","Timetable","Upcoming Classes","Attendance"}:
             if label=="Attendance" and self.current_screen=="authenticated":self.load_reports()
             self.active_navigation=label;self.render_authenticated_shell();return
-        if self.current_role != "Admin" or label not in {"Dashboard", "Students", "Faculty", "Timetable", "Attendance", "Face Enrollment", "Reports", *NAVIGATION_RESOURCES.keys()}:
+        if self.current_role != "Admin" or label not in {"Dashboard", "Students", "Faculty", "Timetable", "Attendance", "Face Enrollment", "Reports", "Audit Logs", *NAVIGATION_RESOURCES.keys()}:
             return
         self.active_navigation = label
         if label == "Dashboard":
@@ -425,7 +436,46 @@ class PremiumUiController:
             if self.current_screen=="authenticated":self.load_reports()
             else:self.render_authenticated_shell()
             return
+        if label == "Audit Logs":self.load_audit();return
         self.load_academic_resource(NAVIGATION_RESOURCES[label])
+
+    def load_requests(self):
+        self.requests_loading=True;self.requests_error=None;self.render_authenticated_shell()
+        result=self.api_client.my_attendance_requests(pageSize=50) if self.current_role=="Student" else self.api_client.attendance_request_queue(pageSize=50)
+        self.requests_data=result.data or {};self.requests_error=None if result.connected else (result.error or "Attendance requests are unavailable.");self.requests_loading=False;self.render_authenticated_shell()
+    def load_notifications(self):
+        self.notifications_loading=True;self.notifications_error=None;self.render_authenticated_shell();result=self.api_client.notifications(pageSize=50)
+        self.notifications_data=result.data or {};self.notifications_error=None if result.connected else (result.error or "Notifications are unavailable.");count=self.api_client.notification_unread_count();self.notification_unread=int((count.data or {}).get("count",0)) if count.connected else 0;self.notifications_loading=False;self.render_authenticated_shell()
+    def load_audit(self):
+        self.audit_loading=True;self.audit_error=None;self.render_authenticated_shell();result=self.api_client.audit_events(pageSize=50)
+        self.audit_data=result.data or {};self.audit_error=None if result.connected else (result.error or "Audit log is unavailable.");self.audit_loading=False;self.render_authenticated_shell()
+    def cancel_request(self,request_id):
+        result=self.api_client.cancel_attendance_request(request_id)
+        self.requests_error=None if result.connected else (result.error or "Request could not be cancelled.");self.load_requests()
+    def review_request(self,item):
+        note=ft.TextField(label="Resolution note (optional)",max_length=1000,multiline=True)
+        def resolve(decision):
+            result=self.api_client.resolve_attendance_request(item["_id"],decision,note.value or None)
+            self.page.pop_dialog();self.requests_error=None if result.connected else (result.error or "Request could not be resolved.");self.load_requests()
+        self.page.show_dialog(ft.AlertDialog(modal=True,title=ft.Text("Review attendance correction"),content=ft.Column([ft.Text(f"{item.get('original_status','').title()} → {item.get('requested_status','').title()}"),ft.Text(item.get("reason","")),note],tight=True),actions=[ft.TextButton("Cancel",on_click=lambda _:self.page.pop_dialog()),ft.OutlinedButton("Reject",on_click=lambda _:resolve("reject")),ft.FilledButton("Approve",on_click=lambda _:resolve("approve"))]))
+    def mark_notification_read(self,notification_id):
+        self.api_client.mark_notification_read(notification_id);self.load_notifications()
+    def mark_all_notifications_read(self,_=None): self.api_client.mark_all_notifications_read();self.load_notifications()
+    def open_attendance_request_form(self,_=None):
+        history=[x for x in (self.attendance_data or {}).get("history",[]) if x.get("status") in {"present","absent","late","excused"}]
+        if not history:
+            self._face_message("No eligible attendance","Only finalized attendance records can be corrected.",False);return
+        selected=ft.Dropdown(label="Attendance record",options=[ft.DropdownOption(key=str(x.get("session_id") or x.get("sessionId")),text=f"{x.get('lectureDate','Lecture')} · {x.get('status','').title()}") for x in history])
+        requested=ft.Dropdown(label="Requested status",options=[ft.DropdownOption(key=x,text=x.title()) for x in ("present","absent","late","excused")])
+        reason=ft.TextField(label="Reason",multiline=True,min_lines=2,max_length=1000)
+        def submit(_):
+            current=next((x.get("status") for x in history if str(x.get("session_id") or x.get("sessionId"))==selected.value),None)
+            if not selected.value or not requested.value or not reason.value or len(reason.value.strip())<3 or requested.value==current:
+                reason.error_text="Choose a different status and enter at least 3 characters.";reason.update();return
+            result=self.api_client.create_attendance_request({"attendanceSessionId":selected.value,"requestedStatus":requested.value,"reason":reason.value.strip()})
+            if result.connected:self.page.pop_dialog();self.active_navigation="Requests";self.load_requests()
+            else:reason.error_text=result.error or "Request could not be submitted.";reason.update()
+        self.page.show_dialog(ft.AlertDialog(modal=True,title=ft.Text("Request attendance correction"),content=ft.Column([selected,requested,reason],tight=True),actions=[ft.TextButton("Cancel",on_click=lambda _:self.page.pop_dialog()),ft.FilledButton("Submit request",on_click=submit)]))
 
     def load_reports(self):
         self.reports_loading=True;self.reports_error=None;self.render_authenticated_shell();role=self.current_role or "Admin";query={k:v for k,v in self.reports_filters.items() if k not in {"search"} and v};result=self.api_client.reports_overview(role,**query)
@@ -1136,11 +1186,19 @@ class PremiumUiController:
                 on_api_check=self.check_api,
                 on_logout=None if is_preview else self.logout,
                 view_label=self.active_navigation,
+                unread_count=self.notification_unread,
+                on_notifications=lambda _:self.select_navigation("Notifications"),
             )
         ]
         if developer_strip:
             shell_controls.append(developer_strip)
-        if self.current_role=="Admin" and self.active_navigation=="Timetable" and self.timetable_state is not None:
+        if self.active_navigation=="Notifications":
+            content=build_notifications_page(tokens,self.notifications_data,self.notifications_loading,self.notifications_error,lambda _:self.load_notifications(),self.mark_notification_read,self.mark_all_notifications_read)
+        elif self.active_navigation=="Requests":
+            content=build_requests_page(self.current_role,tokens,self.requests_data,self.requests_loading,self.requests_error,lambda _:self.load_requests(),self.cancel_request,self.review_request)
+        elif self.current_role=="Admin" and self.active_navigation=="Audit Logs":
+            content=build_audit_page(tokens,self.audit_data,self.audit_loading,self.audit_error,lambda _:self.load_audit())
+        elif self.current_role=="Admin" and self.active_navigation=="Timetable" and self.timetable_state is not None:
             content=build_timetable_page(self.timetable_state,tokens,self.set_timetable_view,self.filter_timetable,lambda _:self.open_timetable_form(),self.timetable_action,self.load_timetable)
         elif self.current_role=="Admin" and self.active_navigation=="Attendance":
             content=build_admin_attendance(tokens,self.attendance_sessions,self.current_attendance,self.open_admin_attendance,self.admin_attendance_action,self.attendance_notice,self.admin_attendance_filter,self.filter_admin_attendance)
@@ -1150,7 +1208,7 @@ class PremiumUiController:
             camera_panel=build_camera_panel(self.camera_panel_state,tokens,self.start_camera,self.stop_camera,"Live Attendance Camera") if self.current_attendance and self.attendance_mode=="face" else None
             content=build_take_attendance(tokens,self.schedule_data,self.attendance_sessions,self.current_attendance,self.start_attendance,self.open_faculty_attendance,self.mark_attendance,self.save_attendance,self.review_attendance,self.attendance_notice,self.attendance_search,self.attendance_status_filter,self.filter_attendance_roster,self.attendance_mode,self.face_attendance_status_data,self.face_attendance_result,self.set_attendance_mode,self.capture_attendance_face,self.face_recognition_mode,self.face_selected_student_id,self.set_face_recognition_mode,self.set_face_selected_student,camera_panel,self.face_reference_image)
         elif self.current_role=="Student" and self.active_navigation=="Attendance":
-            content=build_reports("Student",tokens,self.reports_data,self.reports_error,lambda _:self.load_reports(),loading=self.reports_loading,on_student=self.open_report_student)
+            content=ft.Column([ft.Container(ft.FilledButton("Request Correction",icon=ft.Icons.EDIT_NOTE,on_click=self.open_attendance_request_form),padding=ft.Padding.only(left=24,top=12)),build_student_attendance(tokens,self.attendance_data,(self.attendance_data or {}).get("history"))],spacing=0,expand=True)
         elif self.active_navigation=="Reports" and self.current_role in {"Admin","Faculty"}:
             content=build_reports(self.current_role,tokens,self.reports_data,self.reports_error,lambda _:self.load_reports(),loading=self.reports_loading,options=self.reports_options,filters=self.reports_filters,low=self.reports_low,on_filter=self.filter_reports,on_reset=self.reset_report_filters,on_range=self.set_report_range,on_page=self.set_report_page,on_search=self.search_reports,on_student=self.open_report_student,on_session=self.open_report_session,on_class=self.open_report_class,on_export=self.export_report_csv)
         elif self.current_role == "Admin" and self.active_navigation == "Faculty" and self.faculty_state is not None:

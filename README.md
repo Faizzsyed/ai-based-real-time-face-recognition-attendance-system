@@ -84,6 +84,15 @@ Reserved locations use descriptive filenames under `assets/readme/screenshots/`,
 - Session-level analytics
 - Authorized CSV export
 
+### Phase 13: Requests, Notifications & Audit
+
+- Students can submit a correction request only for their own finalized attendance record; a duplicate pending request for the same session is prevented.
+- The assigned Faculty member (or an institution Admin) can approve or reject it. Approval uses an original-status precondition so a later attendance change is never overwritten silently.
+- Request submission and resolution generate private in-app notifications. Notifications can only be read or marked by their recipient within the authenticated institution.
+- The server records append-only audit events for request creation, cancellation, resolution, and approved attendance corrections. Audit access is Admin-only and metadata is redacted for credentials and biometric fields.
+
+Automated tests cover API contracts, role boundaries, notification privacy routes, audit redaction, and Phase 13 view construction. Manual Student → Faculty → Student verification remains pending.
+
 ## Face Enrollment Flow
 
 ```mermaid

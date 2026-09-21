@@ -243,6 +243,21 @@ class ApiClient:
     def admin_attendance_action(self,session_id:str,action:str,reason:str)->ApiResult:return self.authenticated_request("POST",f"/api/v1/admin/attendance/sessions/{session_id}/{action}",{"reason":reason})
     def student_attendance_summary(self)->ApiResult:return self.authenticated_request("GET","/api/v1/student/attendance/summary")
     def student_attendance_history(self)->ApiResult:return self.authenticated_request("GET","/api/v1/student/attendance/history")
+    def create_attendance_request(self,payload:dict)->ApiResult:return self.authenticated_request("POST","/api/v1/requests/attendance",payload)
+    def my_attendance_requests(self,**filters:Any)->ApiResult:
+        query=urlencode({k:v for k,v in filters.items() if v not in (None,"")});return self.authenticated_request("GET",f"/api/v1/requests/mine{'?'+query if query else ''}")
+    def attendance_request_queue(self,**filters:Any)->ApiResult:
+        query=urlencode({k:v for k,v in filters.items() if v not in (None,"")});return self.authenticated_request("GET",f"/api/v1/requests/attendance{'?'+query if query else ''}")
+    def attendance_request(self,request_id:str)->ApiResult:return self.authenticated_request("GET",f"/api/v1/requests/{request_id}")
+    def cancel_attendance_request(self,request_id:str)->ApiResult:return self.authenticated_request("POST",f"/api/v1/requests/{request_id}/cancel")
+    def resolve_attendance_request(self,request_id:str,decision:str,note:str|None=None)->ApiResult:return self.authenticated_request("POST",f"/api/v1/requests/{request_id}/{decision}",{"resolutionNote":note} if note else {})
+    def notifications(self,**filters:Any)->ApiResult:
+        query=urlencode({k:v for k,v in filters.items() if v not in (None,"")});return self.authenticated_request("GET",f"/api/v1/notifications{'?'+query if query else ''}")
+    def notification_unread_count(self)->ApiResult:return self.authenticated_request("GET","/api/v1/notifications/unread-count")
+    def mark_notification_read(self,notification_id:str)->ApiResult:return self.authenticated_request("POST",f"/api/v1/notifications/{notification_id}/read")
+    def mark_all_notifications_read(self)->ApiResult:return self.authenticated_request("POST","/api/v1/notifications/read-all")
+    def audit_events(self,**filters:Any)->ApiResult:
+        query=urlencode({k:v for k,v in filters.items() if v not in (None,"")});return self.authenticated_request("GET",f"/api/v1/audit{'?'+query if query else ''}")
     def reports_overview(self,role:str,**filters:Any)->ApiResult:
         query=urlencode({k:v for k,v in filters.items() if v not in (None,"")});return self.authenticated_request("GET",f"/api/v1/{role.casefold()}/reports/{'attendance' if role.casefold()=='student' else 'overview'}{'?'+query if query else ''}")
     def reports_subjects(self,role:str,**filters:Any)->ApiResult:
