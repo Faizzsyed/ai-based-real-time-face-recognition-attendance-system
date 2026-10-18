@@ -13,9 +13,11 @@ from app.modules.reports.router import router as reports_router
 from app.modules.requests.router import router as requests_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.audit.router import router as audit_router
+from app.api.dashboard import router as dashboard_router
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(dev_academic_router)
+router.include_router(dashboard_router)
 router.include_router(auth_router)
 router.include_router(admin_academic_router)
 router.include_router(students_router)
@@ -43,7 +45,14 @@ from fastapi import HTTPException
 def ready() -> dict[str, object]:
     if mongo.status != "connected":
         raise HTTPException(status_code=503, detail="Database not ready")
-    return {"success": True, "status": "ready"}
+    try:mongo.require_database().command("ping")
+    except Exception:raise HTTPException(status_code=503,detail="Database not ready") from None
+    settings=get_settings()
+    if settings.face_ai_enabled:
+        from app.modules.face_ai.engine import shared_engine
+        try:shared_engine(settings.face_detection_model_path,settings.face_recognition_model_path,settings.face_detection_threshold,settings.face_enrollment_consistency_threshold)._models()
+        except Exception:raise HTTPException(status_code=503,detail="Face models not ready") from None
+    return {"success": True, "status": "ready","database":"connected","faceModels":"loaded" if settings.face_ai_enabled else "disabled"}
 
 
 @router.get("/system/info")

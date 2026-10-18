@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: attendai-cloud-test
+    runtime: docker
+    branch: demo-cloud
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/ready
+    autoDeployTrigger: "off"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: CLOUD_TEST_MODE
+        value: "true"
+      - key: MONGODB_DATABASE
+        value: attendai_cloud_test
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FACE_EMBEDDING_ENCRYPTION_KEY
+        sync: false
+      - key: FACE_AI_ENABLED
+        value: "true"
+      - key: FACE_REFERENCE_STORAGE
+        value: mongodb
+      - key: FACE_LIVENESS_MODE
+        value: optional
+      - key: CORS_ORIGINS
+        value: ""
+      - key: ENABLE_DEV_ACADEMIC_API
+        value: "false"
+      - key: ENABLE_DEV_ROLE_PREVIEW
+        value: "false"
+      - key: ENABLE_FILE_LOGGING
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO

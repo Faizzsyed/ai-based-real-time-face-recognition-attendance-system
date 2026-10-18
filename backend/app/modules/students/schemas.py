@@ -87,6 +87,12 @@ class StudentUpdate(BaseModel):
     admission_date: date | None = None
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    @field_validator("display_name", "email", mode="before")
+    @classmethod
+    def required_identity(cls, value):
+        if value is None:raise ValueError("Required identity fields cannot be empty")
+        return value
+
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, value):

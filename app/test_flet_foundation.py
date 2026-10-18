@@ -1,6 +1,7 @@
 """Regression coverage for the premium Phase 1.5 Flet foundation."""
 
 from pathlib import Path
+import asyncio
 from unittest.mock import patch
 
 import flet as ft
@@ -24,7 +25,8 @@ from app.main import (
 from app.screens.auth.login import build_login
 from app.screens.auth.splash import build_splash
 from app.screens.admin.academic import ACADEMIC_RESOURCES, build_academic_preview_page
-from app.screens.admin.students import StudentPageState, build_students_page
+from app.screens.admin.dashboard import build_admin_dashboard
+from app.screens.admin.students import StudentPageState, build_student_create_form, build_students_page
 from app.screens.student.dashboard import build_student_dashboard
 from app.screens.faculty.dashboard import build_faculty_dashboard
 from app.screens.admin.faculty import FacultyPageState,build_faculty_page
@@ -107,6 +109,36 @@ def test_all_public_and_dashboard_components_construct_in_both_themes() -> None:
             metric_card("Metric", "1", ft.Icons.BAR_CHART_OUTLINED, "Preview", tokens),
         ]
         assert all(isinstance(control, ft.Control) for control in controls)
+
+
+def test_admin_dashboard_and_student_form_use_live_data_and_references() -> None:
+    dashboard = build_admin_dashboard(
+        LIGHT,
+        show_development_structure=False,
+        show_setup_wizard=False,
+        dashboard_data={
+            "totalStudents": 2,
+            "totalFaculty": 1,
+            "attendanceToday": "No lectures today",
+            "pendingRequests": 0,
+        },
+    )
+    dashboard_text = " ".join(str(getattr(control, "value", "")) for control in walk_controls(dashboard))
+    assert "1,248" not in dashboard_text and "Preview data" not in dashboard_text
+    assert "No lectures today" in dashboard_text
+
+    references = {
+        "academic_year_id": [("year", "2026-27")],
+        "department_id": [("department", "Computer Science")],
+        "program_id": [("program", "B.Tech")],
+        "semester_id": [("semester", "Semester 1")],
+        "class_division_id": [("class", "A")],
+    }
+    form = build_student_create_form(LIGHT, lambda _: None, lambda _: None, references)
+    dropdown_labels = {control.label for control in walk_controls(form) if isinstance(control, ft.Dropdown)}
+    assert dropdown_labels == {"Academic Year", "Department", "Program", "Semester", "Class / Division"}
+    assert has_key(form, "student-create-form")
+    assert form.content.scroll == ft.ScrollMode.AUTO
 
 
 def test_light_and_dark_themes_construct() -> None:
@@ -232,7 +264,7 @@ def test_responsive_sidebar_for_desktop_tablet_and_phone() -> None:
 
     page.width = 390
     controller.handle_resize()
-    controller.handle_sidebar_toggle()
+    asyncio.run(controller.handle_sidebar_toggle())
     assert page.drawer_open_count == 1
 
 
@@ -263,6 +295,9 @@ def test_removed_flet_api_patterns_do_not_return() -> None:
         path.read_text(encoding="utf-8")
         for path in app_root.rglob("*.py")
         if path != Path(__file__)
+        # Build staging copies this test itself, including the forbidden strings.
+        # Check every application source while excluding generated/venv trees.
+        and not {"build", ".venv", "__pycache__"}.intersection(path.relative_to(app_root).parts)
     )
     assert not any(pattern in sources for pattern in removed_patterns)
 
@@ -270,7 +305,7 @@ def test_removed_flet_api_patterns_do_not_return() -> None:
 def test_production_student_dashboard_never_uses_preview_attendance() -> None:
     dashboard = build_student_dashboard(LIGHT, {"display_name": "Ada", "admission_number": "A-1", "email": "ada@example.test", "status": "active", "current_enrollment": {"roll_number": "7"}})
     text = " ".join(str(getattr(control, "value", "")) for control in walk_controls(dashboard))
-    assert "Ada" in text and "Attendance not available yet" in text
+    assert "Ada" in text and "Attendance unavailable" in text
     assert "82%" not in text and "Preview total" not in text
 
 
@@ -322,5 +357,5 @@ def test_phase7_real_faculty_and_student_dashboards_show_schedule_without_previe
     assert "Data Structures" in student_text and "82%" not in student_text
 
 def test_phase7_faculty_and_student_timetable_navigation_is_active():
-    faculty,_,faculty_host=make_controller();faculty.show_preview("Faculty");faculty.select_navigation("Timetable");assert faculty.active_navigation=="Timetable" and has_key(faculty_host.content,"faculty-dashboard")
-    student,_,student_host=make_controller();student.show_preview("Student");student.select_navigation("Upcoming Classes");assert student.active_navigation=="Upcoming Classes" and has_key(student_host.content,"student-dashboard")
+    faculty,_,faculty_host=make_controller();faculty.show_preview("Faculty");faculty.select_navigation("Timetable");assert faculty.active_navigation=="Timetable" and has_key(faculty_host.content,"faculty-timetable")
+    student,_,student_host=make_controller();student.show_preview("Student");student.select_navigation("Upcoming Classes");assert student.active_navigation=="Upcoming Classes" and has_key(student_host.content,"student-upcoming-classes")

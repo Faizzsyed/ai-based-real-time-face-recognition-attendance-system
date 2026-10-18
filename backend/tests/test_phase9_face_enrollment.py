@@ -2,6 +2,7 @@
 import base64
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 import cv2,numpy as np,pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
@@ -38,7 +39,7 @@ class FakeEngine:
         if len({x[0] for x in frames})!=len(frames):raise AppError("DUPLICATE_FACE_FRAMES","Duplicates",422)
         return {"embedding":[.8,.6,0.],"modelVersion":MODEL_VERSION,"captureCount":len(frames),"quality":{"stable":True,"frames":[{} for _ in frames]}}
 def settings(tmp_path=None,key=KEY):return SimpleNamespace(face_ai_enabled=True,face_embedding_encryption_key=key,face_detection_model_path=Path("missing"),face_recognition_model_path=Path("missing"),face_detection_threshold=.9,face_max_image_bytes=5*1024*1024)
-def service():return FaceEnrollmentService(EnrollmentMemory(),Students(),FakeEngine(),settings(),StorageMemory())
+def service():return FaceEnrollmentService(EnrollmentMemory(),Students(),FakeEngine(),settings(),StorageMemory(),audit=Mock())
 
 def test_aes_gcm_round_trip_and_tenant_bound_authentication():
     payload=encrypt_embedding([.1,.2,.3],IID,SID,MODEL_VERSION,KEY);assert payload["algorithm"]=="AES-256-GCM" and decrypt_embedding(payload,IID,SID,MODEL_VERSION,KEY)==[.1,.2,.3]
@@ -49,7 +50,10 @@ def test_encryption_requires_exact_256_bit_key():
     assert error.value.code=="FACE_ENCRYPTION_KEY_INVALID"
 def test_enroll_returns_safe_metadata_never_embedding_and_replaces():
     svc=service();first=svc.enroll(SID,IID,ADMIN,[(b"1","image/jpeg"),(b"2","image/jpeg"),(b"3","image/jpeg")],"camera",True);assert first["enrolled"] and "encrypted_embedding" not in first and "embedding" not in str(first).casefold()
-    original_id=svc.enrollments.doc["_id"];second=svc.enroll(SID,IID,ADMIN,[(b"4","image/jpeg")],"profile_photo",True);assert second["method"]=="profile_photo" and svc.enrollments.doc["_id"]==original_id and "encrypted_embedding" in svc.enrollments.doc
+    original_id=svc.enrollments.doc["_id"]
+    with pytest.raises(AppError) as duplicate:svc.enroll(SID,IID,ADMIN,[(b"4","image/jpeg")],"profile_photo",True)
+    assert duplicate.value.code=="FACE_ALREADY_ENROLLED"
+    second=svc.enroll(SID,IID,ADMIN,[(b"4","image/jpeg")],"profile_photo",True,replace_existing=True);assert second["method"]=="profile_photo" and svc.enrollments.doc["_id"]==original_id and "encrypted_embedding" in svc.enrollments.doc
 def test_consent_frame_count_duplicates_and_quality_errors():
     svc=service()
     with pytest.raises(AppError) as error:svc.enroll(SID,IID,ADMIN,[(b"1","image/jpeg")]*3,"camera",False)

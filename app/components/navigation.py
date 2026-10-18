@@ -18,6 +18,7 @@ class NavigationItem:
 ROLE_NAVIGATION = {
     "Admin": (
         NavigationItem("OVERVIEW", "Dashboard", ft.Icons.DASHBOARD_OUTLINED),
+        NavigationItem("OVERVIEW", "Easy Setup", ft.Icons.AUTO_FIX_HIGH),
         NavigationItem("PEOPLE", "Students", ft.Icons.PEOPLE_OUTLINED),
         NavigationItem("PEOPLE", "Faculty", ft.Icons.SCHOOL_OUTLINED),
         NavigationItem("ACADEMIC SETUP", "Institution", ft.Icons.ACCOUNT_BALANCE_OUTLINED),
@@ -30,12 +31,10 @@ ROLE_NAVIGATION = {
         NavigationItem("ACADEMICS", "Timetable", ft.Icons.CALENDAR_MONTH_OUTLINED),
         NavigationItem("ATTENDANCE", "Attendance", ft.Icons.FACT_CHECK_OUTLINED),
         NavigationItem("ATTENDANCE", "Face Enrollment", ft.Icons.FACE_RETOUCHING_NATURAL),
-        NavigationItem("ATTENDANCE", "Face AI", ft.Icons.FACE_RETOUCHING_NATURAL),
         NavigationItem("ATTENDANCE", "Reports", ft.Icons.BAR_CHART_OUTLINED),
         NavigationItem("SYSTEM", "Requests", ft.Icons.SUPPORT_AGENT_OUTLINED),
         NavigationItem("SYSTEM", "Notifications", ft.Icons.NOTIFICATIONS_OUTLINED),
         NavigationItem("SYSTEM", "Audit Logs", ft.Icons.HISTORY_OUTLINED),
-        NavigationItem("SYSTEM", "Settings", ft.Icons.SETTINGS_OUTLINED),
     ),
     "Faculty": (
         NavigationItem("OVERVIEW", "Dashboard", ft.Icons.DASHBOARD_OUTLINED),
@@ -48,7 +47,6 @@ ROLE_NAVIGATION = {
         NavigationItem("COMMUNICATION", "Requests", ft.Icons.SUPPORT_AGENT_OUTLINED),
         NavigationItem("COMMUNICATION", "Notifications", ft.Icons.NOTIFICATIONS_OUTLINED),
         NavigationItem("ACCOUNT", "Profile", ft.Icons.PERSON_OUTLINED),
-        NavigationItem("ACCOUNT", "Settings", ft.Icons.SETTINGS_OUTLINED),
     ),
     "Student": (
         NavigationItem("OVERVIEW", "Dashboard", ft.Icons.DASHBOARD_OUTLINED),
@@ -59,7 +57,6 @@ ROLE_NAVIGATION = {
         NavigationItem("COMMUNICATION", "Requests", ft.Icons.SUPPORT_AGENT_OUTLINED),
         NavigationItem("COMMUNICATION", "Notifications", ft.Icons.NOTIFICATIONS_OUTLINED),
         NavigationItem("ACCOUNT", "Profile", ft.Icons.PERSON_OUTLINED),
-        NavigationItem("ACCOUNT", "Settings", ft.Icons.SETTINGS_OUTLINED),
     ),
 }
 
@@ -151,7 +148,7 @@ def build_navigation_drawer(role: str, tokens: ThemeTokens, *, active_label: str
             content=ft.Column(
                 [
                     ft.Text("AI Face Attendance", size=20, weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
-                    ft.Text(f"{role} preview", size=12, color=tokens["text_secondary"]),
+                    ft.Text(f"{role} workspace", size=12, color=tokens["text_secondary"]),
                 ],
                 spacing=3,
             ),

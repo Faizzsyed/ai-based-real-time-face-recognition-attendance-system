@@ -20,12 +20,12 @@ def surface_card(
         padding=padding,
         bgcolor=tokens["surface"],
         border=ft.Border.all(1, tokens["border"]),
-        border_radius=18,
+        border_radius=16,
         shadow=ft.BoxShadow(
-            blur_radius=18,
+            blur_radius=10,
             spread_radius=0,
             color=tokens["shadow"],
-            offset=ft.Offset(0, 5),
+            offset=ft.Offset(0, 3),
         ),
         col=col,
         key=key,
@@ -66,7 +66,7 @@ def page_header(title: str, subtitle: str, tokens: ThemeTokens) -> ft.Control:
         [
             ft.Text(
                 title,
-                size=28,
+                size=26,
                 weight=ft.FontWeight.BOLD,
                 color=tokens["text_primary"],
             ),
@@ -129,8 +129,8 @@ def metric_card(
                     weight=ft.FontWeight.BOLD,
                     color=tokens["text_primary"],
                 ),
-                ft.Text(title, size=13, weight=ft.FontWeight.W_600, color=tokens["text_primary"]),
-                ft.Text(caption, size=11, color=tokens["text_secondary"]),
+                ft.Text(title, size=14, weight=ft.FontWeight.W_600, color=tokens["text_primary"]),
+                ft.Text(caption, size=12, color=tokens["text_secondary"]),
             ],
             spacing=8,
         ),
@@ -197,7 +197,7 @@ def attendance_progress_card(
             [
                 ft.Row(
                     [
-                        ft.Text(subject, weight=ft.FontWeight.W_600, color=tokens["text_primary"]),
+                        ft.Text(subject, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, weight=ft.FontWeight.W_600, color=tokens["text_primary"]),
                         ft.Text(f"{percentage}%", weight=ft.FontWeight.BOLD, color=tokens[tone]),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -258,7 +258,7 @@ def profile_avatar(initials: str, tokens: ThemeTokens) -> ft.CircleAvatar:
         content=ft.Text(initials, size=12, weight=ft.FontWeight.BOLD, color=tokens["primary"]),
         bgcolor=tokens["primary_soft"],
         radius=18,
-        tooltip="Preview profile",
+        tooltip="Account profile",
     )
 
 
@@ -283,7 +283,7 @@ def compact_list_row(
                 ft.Column(
                     [
                         ft.Text(title, weight=ft.FontWeight.W_600, color=tokens["text_primary"]),
-                        ft.Text(subtitle, size=11, color=tokens["text_secondary"]),
+                        ft.Text(subtitle, size=12, color=tokens["text_secondary"]),
                     ],
                     spacing=3,
                     expand=True,

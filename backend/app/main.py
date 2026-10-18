@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging,request_id_var,safe_log
 from app.db.mongo import mongo
 from app.core.errors import AppError
-from app.modules.face_ai.engine import FaceEngine
+from app.modules.face_ai.engine import shared_engine
 
 settings = get_settings()
 configure_logging(settings)
@@ -22,7 +22,7 @@ async def lifespan(_: FastAPI):
     mongo.configure()
     detector=recognizer=False
     if settings.face_ai_enabled:
-        try:FaceEngine(settings.face_detection_model_path,settings.face_recognition_model_path,settings.face_detection_threshold)._models();detector=recognizer=True
+        try:shared_engine(settings.face_detection_model_path,settings.face_recognition_model_path,settings.face_detection_threshold,settings.face_enrollment_consistency_threshold)._models();detector=recognizer=True
         except AppError:logger.warning("Face AI models unavailable; manual attendance remains available")
     logger.info("================ AttendAI Backend ================")
     safe_log(logger,logging.INFO,"startup",environment=settings.app_env,api=f"http://{settings.api_host}:{settings.api_port}",database=settings.mongodb_database,mongodb=mongo.status,face_ai="enabled" if settings.face_ai_enabled else "disabled",yunet="loaded" if detector else "unavailable",sface="loaded" if recognizer else "unavailable",face_encryption="configured" if settings.face_embedding_encryption_key else "not_configured",log_level=settings.log_level)

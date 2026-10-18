@@ -19,18 +19,25 @@ class MongoConnection:
         self.status = "not_configured"
         self.database_name: str | None = None
 
-    def configure(self) -> None:
-        settings = get_settings()
+    def configure(self, settings=None) -> None:
+        # A process can host more than one FastAPI lifespan in tests. Reload
+        # settings here so a later isolated startup sees its environment.
+        get_settings.cache_clear()
+        settings = settings if settings is not None else get_settings()
         self.close()
         self.database_name = settings.mongodb_database
         if not settings.mongodb_uri:
             self.status = "not_configured"
             return
+        client = None
         try:
+            timeout=10000 if settings.app_env.casefold()=="production" else 1500
             client = MongoClient(
                 settings.mongodb_uri,
-                serverSelectionTimeoutMS=1500,
-                connectTimeoutMS=1500,
+                serverSelectionTimeoutMS=timeout,
+                connectTimeoutMS=timeout,
+                socketTimeoutMS=10000,
+                maxPoolSize=20,
                 tz_aware=True,
             )
             client.admin.command("ping")
@@ -41,6 +48,7 @@ class MongoConnection:
             self.status = "connected"
             logger.info("Database connected database=%s",settings.mongodb_database)
         except Exception:
+            if client is not None:client.close()
             self.status = "disconnected"
             self.client = None
             self.database = None

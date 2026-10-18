@@ -4,6 +4,8 @@ from typing import Callable
 import flet as ft
 from app.components.ui import empty_state,page_header,status_badge,surface_card
 from app.core.theme import ThemeTokens
+from app.components.forms import validate, set_error, update, date_field, time_field
+from app.services.setup_defaults import single_value, local_today
 
 DAYS=("monday","tuesday","wednesday","thursday","friday","saturday","sunday")
 @dataclass
@@ -24,18 +26,33 @@ def build_timetable_page(state:TimetablePageState,tokens:ThemeTokens,on_view:Cal
     else:
         body=ft.Column([surface_card(ft.Row([ft.Column([ft.Text(label(x),weight=ft.FontWeight.BOLD),ft.Text(f"{x.get('day_of_week','').title()} · {x.get('room') or 'Room not set'} · {x.get('lecture_type','theory').title()}",size=11,color=tokens["text_secondary"])],expand=True),status_badge(str(x.get("status","inactive")).title(),tokens,"success" if x.get("status")=="active" else "warning"),ft.PopupMenuButton(icon=ft.Icons.MORE_VERT,items=[ft.PopupMenuItem("Edit",on_click=lambda _,entry=x:on_action(entry,"edit")),ft.PopupMenuItem("Deactivate" if x.get("status")=="active" else "Activate",on_click=lambda _,entry=x:on_action(entry,"deactivate" if entry.get("status")=="active" else "activate"))])]),tokens) for x in state.items],spacing=8)
     pager=ft.Row([ft.IconButton(ft.Icons.CHEVRON_LEFT,disabled=state.page<=1,on_click=lambda _:on_page(state.page-1)),ft.Text(f"Page {state.page} of {max(state.pages,1)}"),ft.IconButton(ft.Icons.CHEVRON_RIGHT,disabled=state.page>=state.pages,on_click=lambda _:on_page(state.page+1))],alignment=ft.MainAxisAlignment.CENTER)
-    return ft.Container(ft.Column([page_header("Timetable","Recurring weekly teaching schedule in the Institution timezone.",tokens),ft.Row([ft.SegmentedButton(selected={state.view},segments=[ft.Segment(value="week",label=ft.Text("Weekly grid"),icon=ft.Icon(ft.Icons.CALENDAR_VIEW_WEEK)),ft.Segment(value="list",label=ft.Text("List view"),icon=ft.Icon(ft.Icons.VIEW_LIST))],on_change=lambda e:on_view(next(iter(e.control.selected)))),ft.FilledButton("Add lecture",icon=ft.Icons.ADD,on_click=on_add)],alignment=ft.MainAxisAlignment.SPACE_BETWEEN,wrap=True),ft.ResponsiveRow(filters),body,pager],spacing=16,scroll=ft.ScrollMode.AUTO),padding=24,expand=True,key="admin-timetable-page")
+    return ft.Container(ft.Column([page_header("Timetable","Recurring weekly teaching schedule in the Institution timezone.",tokens),ft.Row([ft.SegmentedButton(selected=[state.view],segments=[ft.Segment(value="week",label=ft.Text("Weekly grid"),icon=ft.Icon(ft.Icons.CALENDAR_VIEW_WEEK)),ft.Segment(value="list",label=ft.Text("List view"),icon=ft.Icon(ft.Icons.VIEW_LIST))],on_change=lambda e:on_view(next(iter(e.control.selected)))),ft.FilledButton("Add lecture",icon=ft.Icons.ADD,on_click=on_add)],alignment=ft.MainAxisAlignment.SPACE_BETWEEN,wrap=True),ft.ResponsiveRow(filters),body,pager],spacing=16,scroll=ft.ScrollMode.AUTO),padding=24,expand=True,key="admin-timetable-page")
 
 def build_timetable_form(tokens,on_submit,on_cancel,faculty_records,on_assignments,record=None):
     record=record or {};faculty=ft.Dropdown(label="Faculty",value=str(record.get("faculty_id") or "") or None,options=[ft.DropdownOption(key=str(x.get("_id")),text=x.get("display_name","Faculty")) for x in faculty_records],enable_search=True);assignment=ft.Dropdown(label="Faculty Assignment",value=str(record.get("faculty_assignment_id") or "") or None,disabled=not record)
     def selected(_):
-        records=on_assignments(faculty.value);assignment.options=[ft.DropdownOption(key=str(x.get("_id")),text=f"{(x.get('subject') or {}).get('name','Subject')} · {(x.get('class_division') or {}).get('name','Class')} · {x.get('assignment_type','primary').replace('_',' ').title()}") for x in records if x.get("status")=="active"];assignment.disabled=False;assignment.value=None;assignment.update()
+        records=on_assignments(faculty.value);assignment.options=[ft.DropdownOption(key=str(x.get("_id")),text=f"{(x.get('subject') or {}).get('name','Subject')} · {(x.get('class_division') or {}).get('name','Class')} · {x.get('assignment_type','primary').replace('_',' ').title()}") for x in records if x.get("status")=="active"];assignment.disabled=False;assignment.value=single_value([(x.key,x.text) for x in assignment.options]);update(assignment)
     faculty.on_select=selected
-    day=ft.Dropdown(label="Day",value=record.get("day_of_week"),options=[ft.DropdownOption(key=x,text=x.title()) for x in DAYS]);lecture=ft.Dropdown(label="Lecture type",value=record.get("lecture_type","theory"),options=[ft.DropdownOption(key=x,text=x.title()) for x in ("theory","practical","project","tutorial")])
+    if not record:
+        faculty.value=single_value([(x.key,x.text) for x in faculty.options])
+        if faculty.value:selected(None)
+    day=ft.Dropdown(label="Day",value=record.get("day_of_week","monday"),options=[ft.DropdownOption(key=x,text=x.title()) for x in DAYS]);lecture=ft.Dropdown(label="Lecture type",value=record.get("lecture_type","theory"),options=[ft.DropdownOption(key=x,text=x.title()) for x in ("theory","practical","project","tutorial")])
     def initial(name):
         value=record.get(name) or "";return str(value).split("T",1)[0] if name.startswith("effective_") and value else str(value)
     fields={n:ft.TextField(label=l,value=initial(n)) for n,l in (("start_time","Start time (HH:MM)"),("end_time","End time (HH:MM)"),("room","Room"),("effective_from","Effective from (YYYY-MM-DD)"),("effective_until","Effective until (optional)"))}
+    for name in ("start_time","end_time"):fields[name]=time_field(name.replace("_"," ").title(),initial(name) or ("10:00" if name=="start_time" else "11:00"))
+    for name in ("effective_from","effective_until"):fields[name]=date_field(name.replace("_"," ").title(),initial(name) or (local_today().isoformat() if name=="effective_from" else None))
+    for name,control in {"faculty_id":faculty,"faculty_assignment_id":assignment,"day_of_week":day,**fields}.items():control.key=f"field-{name}"
     if record:
         records=on_assignments(faculty.value);assignment.options=[ft.DropdownOption(key=str(x.get("_id")),text=f"{(x.get('subject') or {}).get('name','Subject')} · {(x.get('class_division') or {}).get('name','Class')}") for x in records];assignment.disabled=False
-    def submit(_):on_submit({k:v for k,v in {"faculty_assignment_id":assignment.value,"day_of_week":day.value,"lecture_type":lecture.value,**{n:c.value for n,c in fields.items()}}.items() if v not in (None,"")})
+    def submit(_):
+        import re
+        controls={"faculty_assignment_id":assignment,"day_of_week":day,**fields}
+        if not validate(controls,("faculty_assignment_id","day_of_week","start_time","end_time","effective_from")):return
+        for name in ("start_time","end_time"):
+            if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d",fields[name].value or ""):
+                set_error(fields[name],"Use 24-hour HH:MM, for example 10:30.");update(fields[name]);return
+        if fields["end_time"].value<=fields["start_time"].value:
+            set_error(fields["end_time"],"End time must be after start time.");update(fields["end_time"]);return
+        on_submit({k:v for k,v in {"faculty_assignment_id":assignment.value,"day_of_week":day.value,"lecture_type":lecture.value,**{n:c.value for n,c in fields.items()}}.items() if v not in (None,"")})
     return ft.Container(ft.Column([page_header("Edit lecture" if record else "Add lecture","Conflicts are checked for Faculty, Class, and Room.",tokens),faculty,assignment,day,*fields.values(),lecture,ft.Row([ft.TextButton("Cancel",on_click=on_cancel),ft.FilledButton("Save lecture",on_click=submit)],alignment=ft.MainAxisAlignment.END)],spacing=10,scroll=ft.ScrollMode.AUTO),width=650,height=680,padding=8,key="timetable-form")

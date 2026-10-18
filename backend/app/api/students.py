@@ -21,6 +21,11 @@ CSV_REQUIRED = [field for field in CSV_FIELDS if field != "phone"]
 def get_student_service(): return StudentService()
 
 
+@router.get("/student/subjects")
+def own_subjects(user: Annotated[dict, Depends(require_role("student"))], service: Annotated[StudentService, Depends(get_student_service)]):
+    return service.own_subjects(user)
+
+
 async def _csv_rows(file: UploadFile):
     if not (file.filename or "").lower().endswith(".csv"):
         raise AppError("INVALID_FILE_TYPE", "Only .csv files are accepted.", 422)

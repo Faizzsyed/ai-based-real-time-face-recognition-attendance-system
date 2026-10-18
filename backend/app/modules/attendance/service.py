@@ -1,6 +1,7 @@
 """Ownership, state-machine, roster, and reporting rules for manual attendance."""
 from datetime import date,datetime,time,timezone
 from app.core.errors import AppError
+from app.core.config import get_settings
 from app.db.object_id import parse_object_id,serialize_document
 from app.modules.attendance.repositories import AttendanceRecordRepository,AttendanceRosterRepository,AttendanceSessionRepository
 from app.modules.faculty.repositories import AssignmentRepository,FacultyRepository
@@ -60,7 +61,13 @@ class AttendanceService:
         if not administrative:self._owned(session,user)
         if session["status"] not in EDITABLE and not administrative:raise AppError("ATTENDANCE_NOT_EDITABLE","Submitted or locked attendance cannot be edited by Faculty.",409)
         if administrative and session["status"]=="locked":raise AppError("ATTENDANCE_LOCKED","Unlock or reopen the session before administrative editing.",409)
-        items=[x.model_dump() for x in payload.records];saved=self.records.save(session["_id"],user["institution_id"],items,user["_id"])
+        items=[x.model_dump() for x in payload.records]
+        # Reviewing an unchanged AI suggestion must preserve its source and review trail.
+        current={str(row["student_id"]):row for row in self.records.for_session(session["_id"],user["institution_id"])}
+        changed=[item for item in items if not (
+            current.get(str(item["student_id"]),{}).get("source")=="face_recognition" and
+            all(current[str(item["student_id"])].get(key)==item.get(key) for key in ("status","remark")))]
+        if changed:self.records.save(session["_id"],user["institution_id"],changed,user["_id"])
         changes={"updated_by":parse_object_id(user["_id"])}
         if hasattr(payload,"topic"):changes.update({"topic":payload.topic,"notes":payload.notes})
         if administrative:changes["last_admin_edit"]={"at":datetime.now(timezone.utc),"by":parse_object_id(user["_id"]),"reason":reason}
@@ -75,7 +82,10 @@ class AttendanceService:
         if session["status"] not in EDITABLE:raise AppError("ATTENDANCE_NOT_SUBMITTABLE","Only draft or reopened attendance can be submitted.",409)
         records=self.records.for_session(session["_id"],user["institution_id"])
         if not records or any(r.get("status") not in {"present","absent","late","excused"} for r in records):raise AppError("INCOMPLETE_ATTENDANCE","Every roster Student must have a valid status before submission.",422,{"summary":self._summary(records)})
-        now=datetime.now(timezone.utc);history=[*session.get("status_history",[]),{"action":"submitted","at":now,"by":parse_object_id(user["_id"])}];self.sessions.update(session["_id"],user["institution_id"],{"status":"submitted","submitted_at":now,"status_history":history});safe_log(logger,logging.INFO,"session submitted",session_id=str(session["_id"]),records=len(records));return self.details(session["_id"],user)
+        now=datetime.now(timezone.utc);history=[*session.get("status_history",[]),{"action":"submitted","at":now,"by":parse_object_id(user["_id"])}];self.sessions.update(session["_id"],user["institution_id"],{"status":"submitted","submitted_at":now,"status_history":history})
+        from app.modules.face_ai.identification import FaceIdentificationService
+        FaceIdentificationService.invalidate_session(user["institution_id"],session["_id"])
+        safe_log(logger,logging.INFO,"session submitted",session_id=str(session["_id"]),records=len(records));return self.details(session["_id"],user)
     def faculty_sessions(self,user,status=None):
         faculty=self._faculty(user);items=self.sessions.for_faculty(user["institution_id"],faculty["_id"],status);return _serialize_list(items)
     def admin_list(self,user,filters,page,size):
@@ -102,4 +112,4 @@ class AttendanceService:
             if not session:continue
             item={**serialize_document(record),"lectureDate":serialize_document(session).get("lecture_date"),"subjectId":str(session["subject_id"]),"sessionStatus":session["status"]};history.append(item);by_subject.setdefault(str(session["subject_id"]),[]).append(record)
         summary=self._summary(records);subjects=[{"subjectId":sid,**self._summary(rows)} for sid,rows in by_subject.items()]
-        return {"summary":summary,"subjects":subjects,"history":history,"formula":{"attended":"present + late","denominator":"present + late + absent","excused":"excluded from denominator"}}
+        return {"summary":summary,"subjects":subjects,"history":history,"threshold":get_settings().attendance_low_threshold_percent,"formula":{"attended":"present + late","denominator":"present + late + absent","excused":"excluded from denominator"}}

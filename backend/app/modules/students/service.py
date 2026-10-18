@@ -10,6 +10,7 @@ from app.core.security import PasswordService
 from app.db.object_id import parse_object_id, serialize_document
 from app.modules.academic_common.services import build_services
 from app.modules.auth.repositories import UserRepository
+from app.modules.auth.schemas import safe_profile_account
 from app.modules.students.repositories import EnrollmentRepository, StudentRepository
 from app.modules.students.schemas import EnrollmentCreate, StudentCreate, StudentStatusUpdate, StudentUpdate
 import logging
@@ -97,7 +98,7 @@ class StudentService:
 
     def list(self, institution_id, filters, search, page, page_size):
         items, total = self.students.list(institution_id, filters, search, page, page_size)
-        return {"items": [serialize_document(x) for x in items], "pagination": {"page": page, "pageSize": page_size, "total": total, "pages": (total + page_size - 1) // page_size}}
+        return {"items": [serialize_document(safe_profile_account(x)) for x in items], "pagination": {"page": page, "pageSize": page_size, "total": total, "pages": (total + page_size - 1) // page_size}}
 
     def get(self, student_id, institution_id):
         student = self.students.find_by_id(student_id, institution_id)
@@ -150,3 +151,13 @@ class StudentService:
         student = self.students.find_by_user(user["_id"], user["institution_id"])
         if not student: raise not_found("Student profile")
         return self.get(str(student["_id"]), str(user["institution_id"]))
+
+    def own_subjects(self, user):
+        student = self.students.find_by_user(user["_id"], user["institution_id"])
+        if not student:
+            raise _student_not_found()
+        enrollment = self.enrollments.current(student["_id"], user["institution_id"])
+        if not enrollment or enrollment.get("enrollment_status") != "active":
+            return {"items": []}
+        return self.academics["subjects"].list({"institution_id": str(user["institution_id"]),
+            "program_id": str(enrollment["program_id"]), "semester_id": str(enrollment["semester_id"]), "status": "active"}, 1, 100)

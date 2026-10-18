@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 from typing import Any, Callable
-from urllib.parse import urlencode,urlparse
+from urllib.parse import urlencode
 import httpx,logging,time,threading
+import errno
+import socket
 from uuid import uuid4
-from app.core.config import get_settings
+from app.core.config import get_settings, resolve_api_url
 from app.state.auth_state import AuthState
 
 
@@ -13,22 +15,30 @@ class ApiResult:
     data: dict | None = None
     status_code: int | None = None
     error: str | None = None
+    error_kind: str | None = None
+    field_errors: dict[str, str] | None = None
+
+    @property
+    def reachable(self) -> bool:
+        return self.status_code is not None or self.connected
 
 
 class ApiClient:
     def __init__(self, base_url: str | None = None, timeout: float = 3.0, auth_state: AuthState | None = None, on_auth_lost: Callable[[], None] | None = None):
-        self.base_url = (base_url or get_settings().api_base_url).rstrip("/")
+        self.base_url = resolve_api_url(base_url)
         self.timeout = timeout
         self.auth_state = auth_state or AuthState()
         self.on_auth_lost = on_auth_lost
         self.logger=logging.getLogger("CLIENT")
         self._refresh_lock=threading.Lock()
         self._auth_loss_lock=threading.Lock();self._auth_loss_notified=False
+        self._request_state = threading.local()
     def set_base_url(self, base_url: str) -> bool:
         """Apply a user-selected development server only after conservative validation."""
-        value=base_url.strip().rstrip("/");parsed=urlparse(value)
-        if parsed.scheme not in {"http","https"} or not parsed.netloc:return False
-        if parsed.scheme=="http" and not get_settings().allow_insecure_dev_api:return False
+        try:
+            value = resolve_api_url(base_url)
+        except ValueError:
+            return False
         self.base_url=value;return True
     def _log(self,message,*args):
         if get_settings().enable_api_request_logging:self.logger.info(message,*args)
@@ -37,15 +47,58 @@ class ApiClient:
         if authenticated and self.auth_state.access_token:headers["Authorization"]=f"Bearer {self.auth_state.access_token}"
         return request_id,headers
 
+    def _url(self, path: str) -> str:
+        return f"{self.base_url}/{path.lstrip('/')}"
+
+    def _network_failure(self, exc: httpx.HTTPError, request_id: str) -> ApiResult:
+        kind, message = "network", "Network error. Check your internet or Wi-Fi connection and the backend URL."
+        if isinstance(exc, httpx.TimeoutException):
+            kind, message = "timeout", "Backend timed out. Check the server and retry."
+        elif isinstance(exc, httpx.ConnectError):
+            kind, message = "connection", "Cannot connect to the backend. Check the server URL and your network connection."
+            cause = exc
+            seen = set()
+            while cause is not None and id(cause) not in seen:
+                seen.add(id(cause))
+                if isinstance(cause, socket.gaierror):
+                    kind, message = "dns", "Backend hostname could not be resolved. Check the server URL and network."
+                    break
+                if isinstance(cause, OSError) and cause.errno in {errno.ECONNREFUSED, 10061}:
+                    kind, message = "connection_refused", "The backend is not accepting connections. Retry or contact your administrator."
+                    break
+                cause = cause.__cause__ or cause.__context__
+        # Exception strings can include URLs, headers or payloads. Log only safe metadata.
+        self.logger.warning("[req=%s] failure=%s exception=%s", request_id, kind, type(exc).__name__)
+        result = ApiResult(False, error=message, error_kind=kind)
+        self._request_state.failure = result
+        return result
+
     def _get(self, path: str) -> ApiResult:
         request_id,headers=self._trace_headers();started=time.perf_counter();self._log("[req=%s] GET %s attempt=1",request_id,path)
         try:
-            response = httpx.get(f"{self.base_url}{path}",headers=headers, timeout=self.timeout)
-            data = response.json()
+            response = httpx.get(self._url(path),headers=headers, timeout=self.timeout)
             self._log("[req=%s] response=%s duration_ms=%.2f",request_id,response.status_code,(time.perf_counter()-started)*1000)
-            return ApiResult(response.is_success and isinstance(data, dict), data if isinstance(data, dict) else None, response.status_code)
-        except (httpx.HTTPError, ValueError):
-            return ApiResult(False)
+        except httpx.HTTPError as exc:
+            return self._network_failure(exc, request_id)
+        return self._response_result(response)
+
+    def _response_result(self, response) -> ApiResult:
+        try:
+            data = response.json()
+        except ValueError:
+            self.logger.warning("Backend response=%s failure=invalid_json", response.status_code)
+            return ApiResult(False, status_code=response.status_code, error="Backend returned an invalid response. Check the API URL.", error_kind="invalid_response")
+        ok = response.is_success and isinstance(data, dict) and data.get("success") is not False
+        error = None if ok else self._error_message(data)
+        field_errors = {}
+        if response.status_code == 422 and isinstance(data, dict) and isinstance(data.get("detail"), list):
+            for item in data["detail"]:
+                if isinstance(item, dict) and item.get("loc"):
+                    field_errors[str(item["loc"][-1])] = "Please check this value."
+            error = "Please check the highlighted fields and try again."
+        if not response.is_success:
+            self.logger.warning("Backend response=%s failure=http", response.status_code)
+        return ApiResult(ok, data if isinstance(data, dict) else None, response.status_code, error, None if ok else "http" if not response.is_success else "invalid_response", field_errors)
 
     def health_check(self) -> ApiResult:
         return self._get("/api/v1/health")
@@ -65,10 +118,9 @@ class ApiClient:
 
     def _request(self, method: str, path: str, *, payload: dict | None = None, authenticated: bool = False, allow_refresh: bool = True) -> ApiResult:
         response=self._send(method,path,json=payload,authenticated=authenticated,allow_refresh=allow_refresh)
-        if response is None:return ApiResult(False,error="The authentication service is unavailable.")
-        try:data=response.json()
-        except ValueError:data=None
-        return ApiResult(response.is_success and isinstance(data,dict),data if isinstance(data,dict) else None,response.status_code,None if response.is_success else self._error_message(data))
+        if response is None:
+            return getattr(self._request_state, "failure", None) or ApiResult(False,error="The backend is unavailable.", error_kind="network")
+        return self._response_result(response)
 
     @staticmethod
     def _auth_error_code(response):
@@ -83,9 +135,12 @@ class ApiClient:
         return None
 
     def _send(self,method,path,*,authenticated=False,allow_refresh=True,timeout=None,**kwargs):
+        self._request_state.failure = None
         request_id,headers=self._trace_headers(authenticated);used_token=self.auth_state.access_token if authenticated else None;headers.update(kwargs.pop("headers",{}) or {});started=time.perf_counter();self._log("[req=%s] %s %s attempt=1",request_id,method,path)
-        try:response=httpx.request(method,f"{self.base_url}{path}",headers=headers,timeout=timeout or self.timeout,**kwargs)
-        except httpx.HTTPError:return None
+        try:response=httpx.request(method,self._url(path),headers=headers,timeout=timeout or self.timeout,**kwargs)
+        except httpx.HTTPError as exc:
+            self._network_failure(exc, request_id)
+            return None
         self._log("[req=%s] response=%s duration_ms=%.2f",request_id,response.status_code,(time.perf_counter()-started)*1000)
         code=self._auth_error_code(response) if response.status_code==401 else None
         if response.status_code==401 and authenticated and allow_refresh and code=="AUTH_TOKEN_EXPIRED":
@@ -201,6 +256,9 @@ class ApiClient:
     def student_profile(self) -> ApiResult:
         return self.authenticated_request("GET", "/api/v1/student/profile")
 
+    def student_subjects(self) -> ApiResult:
+        return self.authenticated_request("GET", "/api/v1/student/subjects")
+
     def _upload_csv(self, path: str, filename: str, content: bytes, *, confirm: bool = False) -> ApiResult:
         return self._multipart(path,params={"confirm":"true"} if confirm else None,files={"file":(filename,content,"text/csv")},unavailable="The import service is unavailable.",timeout=max(self.timeout,30))
 
@@ -244,11 +302,15 @@ class ApiClient:
         return self._multipart(f"/api/v1/faculty/attendance/sessions/{session_id}/face/analyze",files={"image":(name,data,mime)},unavailable="Live face analysis is unavailable; continue manually.")
     def identify_attendance_face(self,session_id:str,name:str,data:bytes,mime:str,student_id:str|None=None,liveness_frames:list[bytes]|None=None)->ApiResult:
         files=[("image",(name,data,mime))]+[("livenessImages",(f"liveness_{index}.jpg",frame,"image/jpeg")) for index,frame in enumerate(liveness_frames or [],1)];return self._multipart(f"/api/v1/faculty/attendance/sessions/{session_id}/face/identify",files=files,data={"studentId":student_id} if student_id else {},unavailable="Face Attendance is unavailable; continue manually.")
+    def admin_dashboard_metrics(self) -> ApiResult:
+        return self.authenticated_request("GET", "/api/v1/admin/dashboard")
+
     def admin_attendance_sessions(self,**filters:Any)->ApiResult:
         query=urlencode({k:v for k,v in filters.items() if v not in (None,"")});return self.authenticated_request("GET",f"/api/v1/admin/attendance/sessions{'?'+query if query else ''}")
     def admin_attendance_action(self,session_id:str,action:str,reason:str)->ApiResult:return self.authenticated_request("POST",f"/api/v1/admin/attendance/sessions/{session_id}/{action}",{"reason":reason})
     def student_attendance_summary(self)->ApiResult:return self.authenticated_request("GET","/api/v1/student/attendance/summary")
     def student_attendance_history(self)->ApiResult:return self.authenticated_request("GET","/api/v1/student/attendance/history")
+    def student_attendance_session(self, session_id)->ApiResult:return self.authenticated_request("GET",f"/api/v1/student/attendance/sessions/{session_id}")
     def create_attendance_request(self,payload:dict)->ApiResult:return self.authenticated_request("POST","/api/v1/requests/attendance",payload)
     def my_attendance_requests(self,**filters:Any)->ApiResult:
         query=urlencode({k:v for k,v in filters.items() if v not in (None,"")});return self.authenticated_request("GET",f"/api/v1/requests/mine{'?'+query if query else ''}")
@@ -287,9 +349,9 @@ class ApiClient:
         payload=[("images",(name,data,mime)) for name,data,mime in files];return self._multipart(path,files=payload,data=fields or {},unavailable="The face enrollment service is unavailable.")
     def analyze_face(self,student_id:str,name:str,data:bytes,mime:str)->ApiResult:
         return self._multipart(f"/api/v1/admin/students/{student_id}/face/analyze",files={"image":(name,data,mime)},unavailable="Face quality analysis is unavailable.")
-    def enroll_face(self,student_id:str,files:list[tuple[str,bytes,str]],method:str="camera")->ApiResult:return self._face_upload(f"/api/v1/admin/students/{student_id}/face/enroll",files,{"consent_confirmed":"true","enrollment_method":method})
-    def enroll_face_from_profile(self,student_id:str)->ApiResult:
-        return self._multipart(f"/api/v1/admin/students/{student_id}/face/enroll-from-profile",data={"consent_confirmed":"true"},unavailable="Profile-photo enrollment is unavailable.")
+    def enroll_face(self,student_id:str,files:list[tuple[str,bytes,str]],method:str="camera",replace_existing:bool=False)->ApiResult:return self._face_upload(f"/api/v1/admin/students/{student_id}/face/enroll",files,{"consent_confirmed":"true","enrollment_method":method,"replace_existing":str(replace_existing).lower()})
+    def enroll_face_from_profile(self,student_id:str,replace_existing:bool=False)->ApiResult:
+        return self._multipart(f"/api/v1/admin/students/{student_id}/face/enroll-from-profile",data={"consent_confirmed":"true","replace_existing":str(replace_existing).lower()},unavailable="Profile-photo enrollment is unavailable.")
     def remove_face(self,student_id:str)->ApiResult:return self.authenticated_request("DELETE",f"/api/v1/admin/students/{student_id}/face")
 
     def _multipart(self,path,*,files=None,data=None,params=None,unavailable="The request is unavailable.",timeout=None):

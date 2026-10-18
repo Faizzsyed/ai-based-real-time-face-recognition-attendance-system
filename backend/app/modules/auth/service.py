@@ -59,10 +59,13 @@ class AuthService:
             raise AppError("AUTH_ACCOUNT_INACTIVE", "The account is not active.", 403)
         self.users.record_login(user["_id"], now)
         user = {**user, "failed_login_attempts": 0, "locked_until": None, "last_login_at": now}
+        result = self._issue_pair(user, user_agent=user_agent, device_name=device_name)
         logger.info("Authentication login success user_id=%s", user["_id"])
-        return self._issue_pair(user, user_agent=user_agent, device_name=device_name)
+        return result
 
     def _issue_pair(self, user: dict[str, Any], *, family_id: str | None = None, user_agent: str | None = None, device_name: str | None = None) -> dict[str, Any]:
+        # Validate the public payload before persisting a refresh session.
+        public_user = safe_user(user)
         access_token, expires_in = self.tokens.create_access_token(user)
         session_id, refresh_token, token_hash, expires_at = self.tokens.issue_refresh_token()
         now = datetime.now(timezone.utc)
@@ -79,7 +82,7 @@ class AuthService:
             "user_agent": user_agent,
             "device_name": device_name,
         })
-        return {"accessToken": access_token, "refreshToken": refresh_token, "tokenType": "bearer", "expiresIn": expires_in, "user": safe_user(user)}
+        return {"accessToken": access_token, "refreshToken": refresh_token, "tokenType": "bearer", "expiresIn": expires_in, "user": public_user}
 
     def refresh(self, refresh_token: str, *, user_agent: str | None = None, device_name: str | None = None) -> dict[str, Any]:
         self.tokens.ensure_configured()

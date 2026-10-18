@@ -84,10 +84,11 @@ def build_login(
     auth_loading: bool = False,
     auth_error: str | None = None,
     compact: bool = False,
+    api_error: str | None = None,
 ) -> ft.Control:
     identifier = ft.TextField(label="Email / Username", prefix_icon=ft.Icons.PERSON_OUTLINED, key="login-identifier")
     password = ft.TextField(label="Password", prefix_icon=ft.Icons.LOCK_OUTLINED, password=True, can_reveal_password=True, key="login-password")
-    login_button = ft.FilledButton("Signing in..." if auth_loading else "Login", icon=ft.Icons.LOGIN, disabled=True, key="login-submit")
+    login_button = ft.FilledButton("Signing in..." if auth_loading else "Login", icon=ft.Icons.LOGIN, disabled=True, height=48, key="login-submit")
 
     def validate_fields(_: ft.ControlEvent | None = None) -> None:
         login_button.disabled = auth_loading or not bool((identifier.value or "").strip() and password.value)
@@ -108,31 +109,33 @@ def build_login(
         identifier,
         password,
         login_button,
-        ft.TextButton("Forgot Password (coming soon)"),
-        ft.Row([api_status, ft.Text("Foundation API", size=11, color=tokens["text_secondary"])], spacing=8),
+        ft.Text("Need help signing in? Contact your administrator.",size=12,color=tokens["text_secondary"]),
+        ft.Row([api_status, ft.Text("Attendance service", size=11, color=tokens["text_secondary"])], spacing=8, wrap=True),
     ]
+    if api_error:
+        login_controls.append(ft.Text(api_error, color=tokens["danger"], size=12, key="api-error"))
     if auth_error:
         login_controls.insert(5, ft.Text(auth_error, color=tokens["danger"], size=12, key="login-error"))
     if development_preview_enabled:
         login_controls.append(_development_panel(on_preview, tokens))
 
     login_card = surface_card(
-        ft.Column(login_controls, spacing=14),
+        ft.Column(login_controls, spacing=10 if compact else 14, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
         tokens,
-        padding=26,
+        padding=16 if compact else 26,
         key="login-card",
     )
     return ft.Container(
         content=ft.ResponsiveRow(
             [
-                ft.Container(_academic_visual(tokens,compact), col={"xs": 12, "md": 7}, padding=ft.Padding.symmetric(horizontal=12 if compact else 18, vertical=18 if compact else 24)),
+                *([] if compact else [ft.Container(_academic_visual(tokens), col={"xs": 12, "md": 7}, padding=ft.Padding.symmetric(horizontal=18, vertical=24))]),
                 ft.Container(login_card, col={"xs": 12, "md": 5}, padding=ft.Padding.symmetric(horizontal=0 if compact else 8, vertical=12 if compact else 18)),
             ],
             spacing=22,
             run_spacing=10,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        padding=ft.Padding.symmetric(horizontal=16 if compact else 20, vertical=14),
+        padding=ft.Padding.symmetric(horizontal=12 if compact else 20, vertical=8 if compact else 14),
         bgcolor=tokens["background"],
         alignment=ft.Alignment.CENTER,
         expand=not compact,

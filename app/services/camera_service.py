@@ -35,7 +35,9 @@ class CameraService:
         except ImportError as exc:
             raise CameraUnavailable("Desktop OpenCV camera support is unavailable.") from exc
         if self.capture_factory is None:self.capture_factory=cv2.VideoCapture
-        logger.info("[CAMERA] open requested index=%s",self.index);capture=self.capture_factory(self.index)
+        logger.info("[CAMERA] open requested index=%s",self.index)
+        try:capture=self.capture_factory(self.index)
+        except Exception as exc:raise CameraUnavailable("Camera could not open. Close other camera apps and retry.") from exc
         if not capture or not capture.isOpened():
             if capture:capture.release()
             raise CameraUnavailable("Camera is unavailable or permission was denied.")
@@ -67,6 +69,9 @@ class CameraService:
             scale=max_width/width;image=cv2.resize(image,(max_width,max(1,int(height*scale))),interpolation=cv2.INTER_AREA)
         ok,encoded=cv2.imencode(".jpg",image,[int(cv2.IMWRITE_JPEG_QUALITY),int(quality)]);perf_logger.debug("[PERF] jpeg_encode_ms=%.2f",(time.perf_counter()-started)*1000);return encoded.tobytes() if ok else None
     def encode_preview(self,frame,max_width=960,quality=78):return self._encode(frame,max_width,quality)
+    def encode_guided_preview(self,frame,box):
+        from app.services.face_preview import draw_face_box
+        return self.encode_preview(CameraFrame(draw_face_box(frame.image,box),frame.sequence,frame.captured_at))
     def encode_analysis(self,frame,max_width=640,quality=88):return self._encode(frame,max_width,quality)
     def snapshot(self):
         item=self.raw_snapshot();return (self.encode_preview(item),item.sequence) if item else (None,0)
@@ -76,6 +81,7 @@ class CameraService:
             thread.join(timeout=1.5)
             if thread.is_alive():self._release();thread.join(timeout=1)
         self._release();self._thread=thread if thread and thread.is_alive() else None;logger.info("[CAMERA] stopped")
+        self.frames.clear()
     def _release(self):
         with self._release_lock:
             capture,self._capture=self._capture,None

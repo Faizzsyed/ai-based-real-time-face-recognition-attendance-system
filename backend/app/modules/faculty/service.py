@@ -6,6 +6,7 @@ from app.core.security import PasswordService
 from app.db.object_id import parse_object_id,serialize_document
 from app.modules.academic_common.services import build_services
 from app.modules.auth.repositories import UserRepository
+from app.modules.auth.schemas import safe_profile_account
 from app.modules.faculty.repositories import AssignmentRepository,FacultyRepository
 import logging
 from app.core.logging import safe_log
@@ -52,7 +53,7 @@ class FacultyService:
             raise
     def list(self,iid,filters,search,page,size):
         items,total=self.faculty.list(iid,filters,search,page,size)
-        return {"items":[serialize_document(x) for x in items],"pagination":{"page":page,"pageSize":size,"total":total,"pages":(total+size-1)//size}}
+        return {"items":[serialize_document(safe_profile_account(x)) for x in items],"pagination":{"page":page,"pageSize":size,"total":total,"pages":(total+size-1)//size}}
     def get(self,fid,iid):
         profile=self.faculty.find_by_id(fid,iid)
         if not profile: raise missing()

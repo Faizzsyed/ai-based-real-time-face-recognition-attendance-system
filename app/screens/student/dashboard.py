@@ -25,6 +25,16 @@ def build_student_dashboard(tokens: ThemeTokens, profile: dict | None = None, sc
         upcoming_rows=[compact_list_row((x.get("subject") or {}).get("name","Subject"),f"{x.get('date')} · {x.get('startTime')}–{x.get('endTime')} · {x.get('room') or 'Room not set'}",status_badge(x.get("state","upcoming").title(),tokens,"success" if x.get("state")=="active" else "primary"),ft.Icons.EVENT_NOTE_OUTLINED,tokens) for x in upcoming[:8]]
         today_rows=[compact_list_row((x.get("subject") or {}).get("name","Subject"),f"{x.get('startTime')}–{x.get('endTime')} · {x.get('room') or 'Room not set'}",status_badge(x.get("state","upcoming").replace("-window","").title(),tokens,"success" if x.get("state")=="active" else "primary"),ft.Icons.TODAY,tokens) for x in today]
         week_rows=[compact_list_row((x.get("subject") or {}).get("name","Subject"),f"{x.get('date')} · {x.get('startTime')}–{x.get('endTime')}",status_badge(x.get("lectureType","theory").title(),tokens,"secondary"),ft.Icons.CALENDAR_VIEW_WEEK,tokens) for x in week]
+        summary=(attendance_data or {}).get("summary") or {}
+        threshold=float((attendance_data or {}).get("threshold",75))
+        eligible=sum(summary.get(key,0) for key in ("present","late","absent"))
+        if attendance_data is None:
+            overall=empty_state("Attendance unavailable","Reopen Attendance to retry loading your attendance.",ft.Icons.ERROR_OUTLINE,tokens)
+        elif not eligible:
+            overall=empty_state("No attendance yet","Your attendance percentage appears after eligible classes are finalized.",ft.Icons.FACT_CHECK_OUTLINED,tokens)
+        else:
+            percentage=float(summary.get("attendancePercentage",0))
+            overall=attendance_progress_card("Overall Attendance",percentage,"Safe" if percentage>=threshold else "Needs attention",tokens)
         return ft.Container(
             ft.Column([
                 page_header(f"Hi, {profile.get('display_name', 'Student')}", "Your verified Student identity and current academic enrollment.", tokens),
@@ -37,7 +47,7 @@ def build_student_dashboard(tokens: ThemeTokens, profile: dict | None = None, sc
                 ], spacing=10), tokens),
                 ft.ResponsiveRow([surface_card(ft.Column([section_header("Today",tokens,schedule_data.get("timezone")),*(today_rows or [empty_state("No classes today","Your class has no active lectures today.",ft.Icons.EVENT_AVAILABLE,tokens)])],spacing=8),tokens,col={"xs":12,"lg":6}),surface_card(ft.Column([section_header("Week",tokens),*(week_rows or [empty_state("No weekly schedule","Your class timetable has no active entries this week.",ft.Icons.CALENDAR_MONTH_OUTLINED,tokens)])],spacing=8),tokens,col={"xs":12,"lg":6})]),
                 surface_card(ft.Column([section_header("Upcoming Classes",tokens,schedule_data.get("timezone")),*(upcoming_rows or [empty_state("No upcoming classes","Your class timetable has no upcoming entries.",ft.Icons.EVENT_AVAILABLE,tokens)])],spacing=8),tokens),
-                attendance_progress_card("Overall Attendance",float((attendance_data.get("summary") or {}).get("attendancePercentage",0)),"Safe" if float((attendance_data.get("summary") or {}).get("attendancePercentage",0))>=75 else "Watch",tokens) if attendance_data is not None else empty_state("Attendance not available yet", "Real attendance data is currently unavailable. No preview figures are shown in production sessions.", ft.Icons.FACT_CHECK_OUTLINED, tokens),
+                overall,
             ], spacing=18, scroll=ft.ScrollMode.AUTO), padding=24, expand=True, key="student-dashboard")
     overall = surface_card(
         ft.ResponsiveRow(

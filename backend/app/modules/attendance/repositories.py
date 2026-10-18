@@ -45,7 +45,16 @@ class AttendanceRecordRepository:
     def save(self,session_id,institution_id,records,actor,source="manual"):
         now=datetime.now(timezone.utc)
         for item in records:
-            result=self.collection.update_one({"session_id":parse_object_id(session_id),"institution_id":parse_object_id(institution_id),"student_id":parse_object_id(item["student_id"])},{"$set":{"status":item["status"],"remark":item.get("remark"),"source":source,"review_state":None if source=="manual" else "ai_suggested","marked_at":now,"marked_by":parse_object_id(actor,"actor_id"),"updated_at":now}})
+            query={"session_id":parse_object_id(session_id),"institution_id":parse_object_id(institution_id),"student_id":parse_object_id(item["student_id"])}
+            changes={"status":item["status"],"remark":item.get("remark"),"source":source,"review_state":None if source=="manual" else "ai_suggested","marked_at":now,"marked_by":parse_object_id(actor,"actor_id"),"updated_at":now}
+            if source=="face_recognition":
+                # Compare and set in MongoDB, so a concurrent manual choice always wins.
+                query["status"]=None
+                changes["face_suggestion"]={"status":"present","at":now,"by":parse_object_id(actor,"actor_id")}
+            result=self.collection.update_one(query,{"$set":changes})
+            if source=="face_recognition" and result.matched_count==0:
+                query.pop("status")
+                if self.collection.find_one(query):continue
             if result.matched_count!=1:raise AppError("STUDENT_NOT_IN_SESSION_ROSTER","A Student is not part of this attendance roster.",422)
         return self.for_session(session_id,institution_id)
     def for_student(self,institution_id,student_id,session_ids=None):

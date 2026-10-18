@@ -1,49 +1,10 @@
-"""Premium static Admin dashboard preview; no live data is used."""
+"""Live, institution-scoped Admin dashboard controls."""
 
 import flet as ft
 
-from app.components.ui import (
-    compact_list_row,
-    metric_card,
-    mini_bar_chart,
-    page_header,
-    section_header,
-    status_badge,
-    surface_card,
-)
+from app.components.ui import metric_card, page_header, section_header, status_badge, surface_card
 from app.core.theme import ThemeTokens
 from app.screens.admin.academic import build_academic_structure_preview, build_setup_wizard
-
-METRICS = (
-    ("Total Students", "1,248", ft.Icons.PEOPLE_OUTLINED, "Preview enrolment", "primary"),
-    ("Total Faculty", "86", ft.Icons.SCHOOL_OUTLINED, "Preview workforce", "secondary"),
-    ("Attendance Today", "91%", ft.Icons.FACT_CHECK_OUTLINED, "2.4% above preview avg.", "success"),
-    ("Face Enrolled", "734", ft.Icons.FACE_RETOUCHING_NATURAL, "59% preview coverage", "warning"),
-)
-
-
-def _department_row(name: str, students: int, attendance: int, tokens: ThemeTokens) -> ft.Control:
-    return ft.Column(
-        [
-            ft.Row(
-                [
-                    ft.Text(name, weight=ft.FontWeight.W_600, color=tokens["text_primary"]),
-                    ft.Text(f"{students} students · {attendance}%", size=11, color=tokens["text_secondary"]),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            ),
-            ft.ProgressBar(
-                value=attendance / 100,
-                color=tokens["primary"],
-                bgcolor=tokens["primary_soft"],
-                bar_height=7,
-                border_radius=6,
-                semantics_label=f"{name} attendance",
-                semantics_value=attendance,
-            ),
-        ],
-        spacing=7,
-    )
 
 
 def build_admin_dashboard(
@@ -55,134 +16,35 @@ def build_admin_dashboard(
     show_setup_wizard: bool = True,
     on_skip_setup=None,
     attendance_data: dict | None = None,
+    dashboard_data: dict | None = None,
+    api_connected: bool = False,
 ) -> ft.Control:
+    """Render only values returned for the authenticated Admin institution."""
     database_connected = setup_status is not None
-    metrics=METRICS
-    if attendance_data is not None:
-        sessions=attendance_data.get("items") or [];submitted=sum(1 for x in sessions if x.get("status") in {"submitted","locked"});metrics=(*METRICS[:2],("Attendance Today",str(submitted),ft.Icons.FACT_CHECK_OUTLINED,"Submitted or locked sessions","success"),*METRICS[3:])
+    dashboard_data = dashboard_data or {}
+    metrics = (
+        ("Total Students", str(dashboard_data.get("totalStudents", "—")), ft.Icons.PEOPLE_OUTLINED, "Active institution enrolment", "primary"),
+        ("Total Faculty", str(dashboard_data.get("totalFaculty", "—")), ft.Icons.SCHOOL_OUTLINED, "Active institution workforce", "secondary"),
+        ("Attendance Today", str(dashboard_data.get("attendanceToday", "—")), ft.Icons.FACT_CHECK_OUTLINED, "Sessions scheduled today", "success"),
+        ("Pending Requests", str(dashboard_data.get("pendingRequests", "—")), ft.Icons.PENDING_ACTIONS_OUTLINED, "Requires review", "warning"),
+    )
     kpis = ft.ResponsiveRow(
         [
-            metric_card(
-                title,
-                value,
-                icon,
-                caption,
-                tokens,
-                tone=tone,
-                col={"xs": 12, "sm": 6, "xl": 3},
-            )
+            metric_card(title, value, icon, caption, tokens, tone=tone, col={"xs": 6, "sm": 6, "xl": 3})
             for title, value, icon, caption, tone in metrics
         ],
         spacing=14,
         run_spacing=14,
     )
-
-    secondary = ft.ResponsiveRow(
-        [
-            metric_card(
-                "Active Lectures",
-                "12",
-                ft.Icons.PLAY_LESSON_OUTLINED,
-                "Across 7 preview departments",
-                tokens,
-                tone="primary",
-                col={"xs": 12, "sm": 6},
-            ),
-            metric_card(
-                "Pending Requests",
-                "18",
-                ft.Icons.PENDING_ACTIONS_OUTLINED,
-                "5 marked high priority",
-                tokens,
-                tone="warning",
-                col={"xs": 12, "sm": 6},
-            ),
-        ],
-        spacing=14,
-        run_spacing=14,
-    )
-
-    analytics = ft.ResponsiveRow(
-        [
-            surface_card(
-                ft.Column(
-                    [
-                        section_header("Attendance Overview", tokens, "Seven-day development preview"),
-                        mini_bar_chart((72, 88, 81, 96, 84, 102, 110), tokens),
-                        ft.Row(
-                            [
-                                status_badge("91% today", tokens, "success", ft.Icons.TRENDING_UP),
-                                ft.Text("Preview data", size=11, color=tokens["text_secondary"]),
-                            ],
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        ),
-                    ],
-                    spacing=14,
-                ),
-                tokens,
-                col={"xs": 12, "lg": 7},
-            ),
-            surface_card(
-                ft.Column(
-                    [
-                        section_header("Department Overview", tokens, "Attendance and student volume"),
-                        _department_row("ECS", 326, 93, tokens),
-                        _department_row("CSE", 412, 91, tokens),
-                        _department_row("IT", 286, 88, tokens),
-                        _department_row("Mechanical", 224, 86, tokens),
-                    ],
-                    spacing=15,
-                ),
-                tokens,
-                col={"xs": 12, "lg": 5},
-            ),
-        ],
-        spacing=14,
-        run_spacing=14,
-    )
-
-    operations = ft.ResponsiveRow(
-        [
-            surface_card(
-                ft.Column(
-                    [
-                        section_header("Active Lectures", tokens),
-                        compact_list_row("Major Project - I", "ECS · Semester 8 · Lab 4", status_badge("Live", tokens, "success"), ft.Icons.PLAY_LESSON_OUTLINED, tokens),
-                        compact_list_row("Data Structures", "CSE · Semester 4 · A-301", status_badge("12:00", tokens, "primary"), ft.Icons.MENU_BOOK_OUTLINED, tokens),
-                        compact_list_row("IoT Systems", "ECS · Semester 6 · Lab 2", status_badge("14:00", tokens, "primary"), ft.Icons.WAVES_OUTLINED, tokens),
-                    ],
-                    spacing=8,
-                ),
-                tokens,
-                col={"xs": 12, "lg": 6},
-            ),
-            surface_card(
-                ft.Column(
-                    [
-                        section_header("Pending Requests", tokens),
-                        compact_list_row("Attendance correction", "Student · 12 min ago", status_badge("High", tokens, "danger"), ft.Icons.SUPPORT_AGENT_OUTLINED, tokens),
-                        compact_list_row("Timetable adjustment", "Faculty · 38 min ago", status_badge("Medium", tokens, "warning"), ft.Icons.CALENDAR_MONTH_OUTLINED, tokens),
-                        compact_list_row("Profile update", "Student · 1 hr ago", status_badge("Normal", tokens, "primary"), ft.Icons.PERSON_OUTLINED, tokens),
-                    ],
-                    spacing=8,
-                ),
-                tokens,
-                col={"xs": 12, "lg": 6},
-            ),
-        ],
-        spacing=14,
-        run_spacing=14,
-    )
-
     systems = surface_card(
         ft.Column(
             [
-                section_header("System & Face AI Status", tokens, "Safe Phase 1 configuration"),
+                section_header("System & Face AI Status", tokens, "Current environment configuration"),
                 ft.ResponsiveRow(
                     [
-                        ft.Container(status_badge("API Connected", tokens, "success", ft.Icons.CLOUD_DONE_OUTLINED), col={"xs": 12, "sm": 4}),
-                        ft.Container(status_badge("Face AI Not Configured", tokens, "warning", ft.Icons.FACE_RETOUCHING_NATURAL), col={"xs": 12, "sm": 4}),
-                        ft.Container(status_badge("Database Connected" if database_connected else "Database Not Configured", tokens, "success" if database_connected else "warning", ft.Icons.STORAGE_OUTLINED), col={"xs": 12, "sm": 4}),
+                        ft.Container(status_badge("API Connected" if api_connected else "API Offline", tokens, "success" if api_connected else "warning", ft.Icons.CLOUD_DONE_OUTLINED), col={"xs": 12, "sm": 4}),
+                        ft.Container(status_badge("Face AI Not Checked", tokens, "warning", ft.Icons.FACE_RETOUCHING_NATURAL), col={"xs": 12, "sm": 4}),
+                        ft.Container(status_badge("Database Available" if database_connected else "Database Status Unavailable", tokens, "success" if database_connected else "warning", ft.Icons.STORAGE_OUTLINED), col={"xs": 12, "sm": 4}),
                     ],
                     spacing=10,
                     run_spacing=10,
@@ -192,19 +54,19 @@ def build_admin_dashboard(
         ),
         tokens,
     )
-
     return ft.Container(
         content=ft.Column(
             [
-                page_header("Welcome back, Admin", "Here’s what’s happening across your institution today.", tokens),
-                kpis,
-                secondary,
-                analytics,
-                operations,
-                systems,
+                page_header("Welcome back, Admin", "Here is your institution's current activity.", tokens),
+                surface_card(ft.Column([
+                    section_header("Easy Setup", tokens, "Set up your academic structure step-by-step in a few minutes."),
+                    ft.FilledButton("Start Easy Setup",icon=ft.Icons.AUTO_FIX_HIGH,on_click=(lambda _:on_setup_step("easy-setup")) if on_setup_step else None),
+                ],spacing=12),tokens,key="admin-easy-setup-entry"),
                 *([build_setup_wizard(setup_status, tokens, on_step=on_setup_step, on_skip=on_skip_setup)] if show_setup_wizard else []),
+                kpis,
+                *([ft.Text("Dashboard statistics are unavailable. Reopen Dashboard to retry.", color=tokens["danger"])] if not dashboard_data else []),
+                systems,
                 *([build_academic_structure_preview(tokens, development_api_enabled)] if show_development_structure else []),
-                ft.Text("Student, Faculty, attendance, and Face AI values remain clearly labeled preview data.", size=11, color=tokens["text_secondary"]),
             ],
             spacing=18,
             scroll=ft.ScrollMode.AUTO,

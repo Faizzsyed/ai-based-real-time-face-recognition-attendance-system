@@ -3,11 +3,14 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from math import isfinite
 
 import flet as ft
 
 from app.components.ui import empty_state, page_header, section_header, status_badge, surface_card
 from app.core.theme import ThemeTokens
+from app.components.forms import validate as validate_fields, connect_hierarchy, set_error, date_field
+from app.services.setup_defaults import academic_year_suggestion, single_value
 
 ACADEMIC_RESOURCES = (
     ("institutions", "Institutions", ft.Icons.ACCOUNT_BALANCE_OUTLINED),
@@ -76,8 +79,11 @@ def build_academic_form(
     on_cancel: Callable,
     *, record: dict[str, Any] | None = None,
     references: dict[str, list[tuple[str, str]]] | None = None,
+    records=None,
 ) -> ft.Control:
     title, _ = _management_details(resource)
+    is_edit = bool(record)
+    if not record and resource == "academic-years":record = academic_year_suggestion()
     references = references or {}
     controls: dict[str, ft.Control] = {}
     fields: list[ft.Control] = []
@@ -92,26 +98,43 @@ def build_academic_form(
             elif kind == "subject_type":
                 options = [(item, item.title()) for item in ("theory", "practical", "project", "elective")]
             control = ft.Dropdown(value=str(value) if value is not None else ("active" if kind == "status" else None), options=[ft.DropdownOption(key=key, text=text) for key, text in options], label=label, key=f"academic-field-{name}", enable_search=True)
+        elif name.endswith("_date"):
+            control = date_field(label.replace(" (YYYY-MM-DD)", ""), value, key=f"academic-field-{name}")
         else:
             control = ft.TextField(label=label, value=str(value) if value is not None else "", keyboard_type=ft.KeyboardType.NUMBER if kind in {"number", "integer"} else ft.KeyboardType.TEXT, key=f"academic-field-{name}")
+        if kind == "reference":control.value = single_value(options, value)
         controls[name] = control
         fields.append(ft.Container(control, col={"xs": 12, "md": 6}))
 
     def submit(_: ft.ControlEvent | None = None) -> None:
+        required={"institution":("name","country","timezone"),"academic-years":("name","start_date","end_date"),
+                  "departments":("name","code"),"programs":("department_id","name","code","degree_type","duration_years","total_semesters"),
+                  "semesters":("academic_year_id","program_id","semester_number"),
+                  "classes":("academic_year_id","department_id","program_id","semester_id","name","division"),
+                  "subjects":("department_id","program_id","semester_id","name","code","subject_type")}
+        fields_valid=validate_fields(controls,required.get(resource,()))
         payload: dict[str, Any] = {}
         for name, _, kind in FORM_FIELDS[resource]:
             value = getattr(controls[name], "value", None)
             if value in (None, "") and kind != "bool":
                 continue
-            if kind == "integer":
-                value = int(value)
-            elif kind == "number":
-                value = float(value)
+            if kind in {"integer", "number"}:
+                try:
+                    value = int(value) if kind == "integer" else float(value)
+                    if not isfinite(value):
+                        raise ValueError
+                except (ValueError, OverflowError):
+                    set_error(controls[name], "Enter a whole number." if kind == "integer" else "Enter a valid number.")
+                    controls[name].update()
+                    return
+                set_error(controls[name], None)
             payload[name] = bool(value) if kind == "bool" else value
-        on_submit(payload)
+        if fields_valid:on_submit(payload)
+
+    connect_hierarchy(controls,records or {})
 
     return ft.Container(ft.Column([
-        section_header(f"{'Edit' if record else 'Create'} {title.rstrip('s')}", tokens, "Validated by the production Admin API."),
+        section_header(f"{'Edit' if is_edit else 'Create'} {title.rstrip('s')}", tokens, "Validated by the production Admin API."),
         ft.ResponsiveRow(fields, spacing=10, run_spacing=10),
         ft.Row([ft.TextButton("Cancel", on_click=on_cancel), ft.FilledButton("Save", icon=ft.Icons.SAVE_OUTLINED, on_click=submit)], alignment=ft.MainAxisAlignment.END),
     ], spacing=14, scroll=ft.ScrollMode.AUTO, tight=True), width=720, padding=8, key=f"academic-{resource}-form")
@@ -181,6 +204,8 @@ def build_setup_wizard(status: dict[str, Any] | None, tokens: ThemeTokens, on_st
         tiles.append(ft.Container(ft.Column([ft.Row([ft.CircleAvatar(content=ft.Text(str(index)), radius=14), ft.Text(label, weight=ft.FontWeight.W_600, color=tokens["text_primary"]), status_badge("Done" if complete else "Pending", tokens, "success" if complete else "warning")], spacing=8), ft.TextButton("Configure", on_click=(lambda _, selected=resource: on_step(selected)) if on_step else None)], spacing=6), padding=10, bgcolor=tokens["surface_secondary"], border_radius=12, col={"xs": 12, "md": 6, "xl": 4}))
     return surface_card(ft.Column([
         ft.Row([section_header("Academic Setup", tokens, "Complete each step using the production Admin API."), status_badge((status or {}).get("state", "Incomplete"), tokens, "success" if (status or {}).get("state") == "Ready" else "warning")], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True),
+        *([ft.Text("Academic setup complete", color=tokens["success"])] if (status or {}).get("state") == "Ready" else []),
+        *([ft.FilledButton("Continue Easy Setup", on_click=(lambda _: on_step("easy-setup")) if on_step else None)] if (status or {}).get("state") != "Ready" else []),
         ft.ResponsiveRow(tiles, spacing=8, run_spacing=8),
         ft.TextButton("Skip wizard and configure manually", on_click=on_skip),
     ], spacing=12), tokens, key="academic-setup-wizard")

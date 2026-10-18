@@ -48,6 +48,11 @@ class FacultyUpdate(BaseModel):
     phone:str|None=Field(None,max_length=30); department_id:str|None=None; designation:str|None=Field(None,max_length=120)
     joining_date:date|None=None; profile_photo_url:str|None=Field(None,max_length=500)
     model_config=ConfigDict(extra="forbid",str_strip_whitespace=True)
+    @field_validator("display_name","email","department_id",mode="before")
+    @classmethod
+    def required_identity(cls,value):
+        if value is None:raise ValueError("Required identity fields cannot be empty")
+        return value
     @field_validator("email",mode="before")
     @classmethod
     def email_normalized(cls,v): return v.strip().casefold() if isinstance(v,str) else v

@@ -13,9 +13,11 @@ from backend.tests.test_phase8_attendance import faculty_user,FAC_USER,STUDENT_U
 
 def test_private_enrollment_storage_is_scoped_replaced_and_removed(tmp_path):
     iid="0123456789abcdef01234567";sid="89abcdef0123456701234567";ok,jpeg=cv2.imencode(".jpg",np.full((40,40,3),100,dtype=np.uint8));assert ok
-    storage=EnrollmentImageStorage(tmp_path);assert storage.save(iid,sid,[(jpeg.tobytes(),"image/jpeg")]*3)==3
+    storage=EnrollmentImageStorage(tmp_path,key_text="k"*32);assert storage.save(iid,sid,[(jpeg.tobytes(),"image/jpeg")]*3)==3
     reference=storage.reference(iid,sid);assert reference and reference.parent==tmp_path/iid/sid
-    assert storage.save(iid,sid,[(jpeg.tobytes(),"image/jpeg")])==1 and len(list(reference.parent.glob("*.jpg")))==1
+    assert reference.suffix==".enc" and not any(tmp_path.rglob("*.jpg"))
+    assert storage.read_reference(iid,sid).startswith(b"\xff\xd8")
+    assert storage.save(iid,sid,[(jpeg.tobytes(),"image/jpeg")])==1 and len(list(reference.parent.glob("*.enc")))==1
     storage.remove(iid,sid);assert storage.reference(iid,sid) is None
     with pytest.raises(ValueError):storage.save(iid,sid,[(b"rejected","image/jpeg")])
     assert not any(tmp_path.rglob("*.jpg")) and "data/face_enrollments/" in (Path(__file__).parents[2]/".gitignore").read_text()

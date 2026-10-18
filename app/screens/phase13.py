@@ -3,7 +3,7 @@ import flet as ft
 from app.components.ui import empty_state,page_header,section_header,status_badge,surface_card
 from app.core.theme import ThemeTokens
 
-def build_requests_page(role:str,tokens:ThemeTokens,data:dict|None,loading=False,error:str|None=None,on_refresh=None,on_cancel=None,on_review=None)->ft.Control:
+def build_requests_page(role:str,tokens:ThemeTokens,data:dict|None,loading=False,error:str|None=None,on_refresh=None,on_cancel=None,on_review=None,on_create=None)->ft.Control:
     if loading: body=surface_card(ft.Row([ft.ProgressRing(),ft.Text("Loading attendance requests…")]),tokens)
     elif error: body=surface_card(ft.Column([ft.Text(error,color=tokens["danger"]),ft.OutlinedButton("Retry",on_click=on_refresh)]),tokens)
     else:
@@ -13,9 +13,15 @@ def build_requests_page(role:str,tokens:ThemeTokens,data:dict|None,loading=False
             actions=[]
             if state=="pending" and role=="Student": actions=[ft.TextButton("Cancel",on_click=lambda _,rid=item.get("_id"):on_cancel(rid))]
             if state=="pending" and role in {"Faculty","Admin"}: actions=[ft.FilledButton("Review",on_click=lambda _,request=item:on_review(request))]
-            rows.append(ft.Container(ft.ListTile(title=ft.Text(student.get("displayName") if role!="Student" else f"Attendance correction · {session.get('subjectId','Subject')}",weight=ft.FontWeight.BOLD),subtitle=ft.Text(subtitle),trailing=ft.Column([status_badge(state.title(),tokens,{"approved":"success","rejected":"danger","pending":"warning"}.get(state,"secondary")),*actions],tight=True,horizontal_alignment=ft.CrossAxisAlignment.END)),padding=4))
+            rows.append(ft.Container(ft.Column([
+                ft.Row([ft.Text(student.get("displayName") or "Student" if role!="Student" else session.get("subjectName","Attendance correction"),weight=ft.FontWeight.BOLD,expand=True,max_lines=2),status_badge(state.title(),tokens,{"approved":"success","rejected":"danger","pending":"warning"}.get(state,"secondary"))],wrap=True),
+                ft.Text(subtitle,color=tokens["text_secondary"]),
+                *([ft.Text(f"Resolution: {item['resolution_note']}",size=12)] if item.get("resolution_note") else []),
+                ft.Row(actions,wrap=True),
+            ],spacing=10),padding=14,border_radius=12,bgcolor=tokens["surface_secondary"]))
+
         body=surface_card(ft.Column([section_header("Request queue" if role!="Student" else "My requests",tokens),*(rows or [empty_state("No attendance requests","New and resolved correction requests will appear here.",ft.Icons.SUPPORT_AGENT_OUTLINED,tokens)])],spacing=8),tokens)
-    return ft.Container(ft.Column([page_header("Attendance Requests","Request corrections or review only the attendance sessions you are authorized to manage.",tokens),body],spacing=16,scroll=ft.ScrollMode.AUTO),padding=24,expand=True,key=f"{role.casefold()}-requests")
+    return ft.Container(ft.Column([page_header("Attendance Requests","Request corrections or review only the attendance sessions you are authorized to manage.",tokens),*([ft.FilledButton("Request correction",icon=ft.Icons.EDIT_NOTE,on_click=on_create)] if role=="Student" and on_create else []),body],spacing=16,scroll=ft.ScrollMode.AUTO),padding=24,expand=True,key=f"{role.casefold()}-requests")
 
 def build_notifications_page(tokens:ThemeTokens,data:dict|None,loading=False,error:str|None=None,on_refresh=None,on_read=None,on_read_all=None)->ft.Control:
     if loading: body=surface_card(ft.Row([ft.ProgressRing(),ft.Text("Loading notifications…")]),tokens)

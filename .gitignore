@@ -12,6 +12,7 @@ __pycache__/
 .coverage
 htmlcov/
 build/
+app/core/build_config.py
 dist/
 *.apk
 *.aab

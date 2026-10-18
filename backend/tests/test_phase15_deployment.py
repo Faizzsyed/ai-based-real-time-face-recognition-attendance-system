@@ -4,6 +4,7 @@ from app.core.config import Settings
 from fastapi.testclient import TestClient
 from app.main import app
 from app.db.mongo import mongo
+from unittest.mock import Mock
 
 client = TestClient(app)
 
@@ -73,7 +74,8 @@ def test_ready_endpoint_returns_503_when_mongo_disconnected():
     finally:
         mongo.status = original_status
 
-def test_ready_endpoint_returns_200_when_mongo_connected():
+def test_ready_endpoint_returns_200_when_mongo_connected(monkeypatch):
+    monkeypatch.setattr(mongo,"database",Mock())
     original_status = mongo.status
     mongo.status = "connected"
     try:

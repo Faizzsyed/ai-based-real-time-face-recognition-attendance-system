@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import getpass
+import argparse,secrets
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +14,7 @@ from pymongo.errors import DuplicateKeyError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.core.config import get_settings  # noqa: E402
+from app.core.config import get_settings,Settings  # noqa: E402
 from app.core.errors import AppError  # noqa: E402
 from app.core.security import PasswordService  # noqa: E402
 from app.db.mongo import mongo  # noqa: E402
@@ -34,12 +35,23 @@ def optional(prompt: str) -> str | None:
 
 
 def main() -> int:
-    settings = get_settings()
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cloud-test",action="store_true",help="Bootstrap only attendai_cloud_test using a privately entered Atlas URI")
+    args=parser.parse_args()
+    if args.cloud_test:
+        try:
+            # Do not inherit the developer's .env, database target or signing key.
+            settings=Settings(_env_file=None,app_env="production",cloud_test_mode=True,
+                              mongodb_database="attendai_cloud_test",mongodb_uri=getpass.getpass("Atlas cloud-test URI (hidden): "),
+                              jwt_secret=secrets.token_urlsafe(48),face_ai_enabled=False,face_reference_storage="mongodb",cors_origins="")
+        except ValueError:
+            print("Invalid cloud-test configuration. No changes made.");return 2
+    else:settings = get_settings()
     database_name = settings.mongodb_database.strip()
     if not settings.mongodb_uri:
         print("Refusing to continue: MONGODB_URI is not configured.")
         return 2
-    if database_name.casefold() in KNOWN_LEGACY_DATABASE_NAMES or not database_name.casefold().startswith("attendai_python"):
+    if not args.cloud_test and (database_name.casefold() in KNOWN_LEGACY_DATABASE_NAMES or not database_name.casefold().startswith("attendai_python")):
         print("Refusing to continue: target is not an explicitly named AttendAI-Python database.")
         return 2
 
@@ -63,6 +75,7 @@ def main() -> int:
         if "@" not in email:
             raise ValueError("Admin email is not valid.")
         password = getpass.getpass("Admin password (minimum 8 characters): ")
+        if args.cloud_test and len(password)<16:raise ValueError("Cloud Admin password must have at least 16 characters.")
         if password != getpass.getpass("Confirm Admin password: "):
             raise ValueError("Passwords did not match.")
         password_hash = PasswordService().hash_password(password)
@@ -71,7 +84,7 @@ def main() -> int:
             print("Confirmation not received. No changes made.")
             return 2
 
-        mongo.configure()
+        mongo.configure(settings)
         database = mongo.require_database()
         existing_institution = database.institutions.find_one({"code": institution.code})
         existing_user = database.users.find_one({"$or": [{"email": email}, {"username": username}]})
@@ -82,6 +95,8 @@ def main() -> int:
             return 0
         if existing_user and not existing_institution:
             raise ValueError("Admin identifier already exists without the requested Institution.")
+        if args.cloud_test and (database.users.count_documents({}) or database.institutions.count_documents({})):
+            raise ValueError("Cloud bootstrap requires an empty database or the same existing Institution/Admin pair.")
 
         now = datetime.now(timezone.utc)
         created_institution_id = None

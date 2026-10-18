@@ -128,6 +128,48 @@ def test_password_hash_never_serialized(auth_domain):
     assert "password_hash" not in user and "passwordHash" not in user
 
 
+@pytest.mark.parametrize("display_name", [None, "", "   "])
+def test_empty_legacy_display_name_uses_username(auth_domain, display_name):
+    user = {**auth_domain[3][0], "display_name": display_name}
+    assert safe_user(user)["displayName"] == user["username"]
+
+
+def test_current_display_name_is_preserved(auth_domain):
+    user = {**auth_domain[3][0], "display_name": "Institution Administrator"}
+    assert safe_user(user)["displayName"] == "Institution Administrator"
+
+
+@pytest.mark.parametrize("field", ["institution_id", "role", "username"])
+def test_display_name_compatibility_does_not_default_security_fields(auth_domain, field):
+    user = {**auth_domain[3][0]}
+    user.pop("display_name")
+    user.pop(field)
+    with pytest.raises(KeyError):
+        safe_user(user)
+
+
+def test_payload_failure_does_not_persist_session_or_log_login_success(auth_domain, caplog, monkeypatch):
+    service, _, sessions, users = auth_domain
+    users[0].pop("email")
+    # Reach serialization after real password verification, despite the missing
+    # email field (the in-memory lookup itself normally indexes that field).
+    monkeypatch.setattr(service.users, "find_by_identifier", lambda _: users[0])
+    with caplog.at_level("INFO"), pytest.raises(KeyError, match="email"):
+        service.login("admin", "Correct123")
+    assert not sessions.sessions
+    assert "Authentication login success" not in caplog.text
+    assert "Correct123" not in caplog.text
+
+
+def test_legacy_account_still_rejects_wrong_password(auth_domain):
+    service, _, sessions, users = auth_domain
+    users[0].pop("display_name")
+    with pytest.raises(AppError) as exc:
+        service.login("admin", "Incorrect")
+    assert exc.value.code == "AUTH_INVALID_CREDENTIALS"
+    assert users[0]["failed_login_attempts"] == 1 and not sessions.sessions
+
+
 def test_login_success_and_normalized_identifier(auth_domain):
     service, _, sessions, _ = auth_domain
     result = service.login(" ADMIN@EXAMPLE.EDU ", "Correct123")
@@ -281,6 +323,44 @@ def test_missing_jwt_secret_fails_safely(auth_domain):
 def _client_for(service: AuthService):
     app.dependency_overrides[get_auth_service] = lambda: service
     return TestClient(app)
+
+
+@pytest.mark.parametrize("identifier_field", ["username", "email"])
+@pytest.mark.parametrize("role", ["admin", "faculty", "student"])
+def test_legacy_account_without_display_name_completes_auth_flow(auth_domain, role, identifier_field, monkeypatch):
+    """Existing local users predate display_name; passwords/roles stay mandatory."""
+    service, _, sessions, users = auth_domain
+    user = next(user for user in users if user["role"] == role)
+    del user["display_name"]
+    monkeypatch.setenv("MONGODB_URI", "")
+    app.dependency_overrides[get_auth_service] = lambda: service
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            login = client.post("/api/v1/auth/login", json={"identifier": user[identifier_field], "password": "Correct123"})
+            assert login.status_code == 200, login.text
+            first = login.json()["data"]
+            assert first["user"]["displayName"] == user["username"]
+            assert first["user"]["institutionId"] == str(user["institution_id"])
+            assert first["user"]["role"] == role
+            assert "password_hash" not in login.text and "Correct123" not in login.text
+            headers = {"Authorization": f"Bearer {first['accessToken']}"}
+            me = client.get("/api/v1/auth/me", headers=headers)
+            assert me.status_code == 200 and me.json()["data"]["user"] == first["user"]
+            other_role = "student" if role == "admin" else "admin"
+            assert client.get(f"/api/v1/auth/test/{other_role}", headers=headers).status_code == 403
+            refresh = client.post("/api/v1/auth/refresh", json={"refreshToken": first["refreshToken"]})
+            assert refresh.status_code == 200
+            second = refresh.json()["data"]
+            assert second["user"] == first["user"]
+            assert second["refreshToken"] != first["refreshToken"]
+            session_id = service.tokens.refresh_session_id(first["refreshToken"])
+            assert sessions.sessions[session_id]["revoked_at"] is not None
+            logout = client.post("/api/v1/auth/logout", json={"refreshToken": second["refreshToken"]}, headers={"Authorization": f"Bearer {second['accessToken']}"})
+            assert logout.status_code == 200
+            assert client.post("/api/v1/auth/refresh", json={"refreshToken": second["refreshToken"]}).status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
 
 
 def test_me_returns_safe_user(auth_domain):

@@ -92,10 +92,15 @@ class LogoutRequest(BaseModel):
 
 
 def safe_user(user: dict[str, Any]) -> dict[str, Any]:
+    # Older accounts predate the display_name field. It is presentation data;
+    # required identity, role and institution fields must still be present.
+    display_name = user.get("display_name")
+    if not isinstance(display_name, str) or not display_name.strip():
+        display_name = user["username"]
     return {
         "id": str(user["_id"]),
         "institutionId": str(user["institution_id"]),
-        "displayName": user["display_name"],
+        "displayName": display_name,
         "email": user["email"],
         "username": user["username"],
         "role": user["role"],
@@ -104,3 +109,13 @@ def safe_user(user: dict[str, Any]) -> dict[str, Any]:
         "facultyId": str(user["faculty_id"]) if user.get("faculty_id") else None,
         "studentId": str(user["student_id"]) if user.get("student_id") else None,
     }
+
+
+def safe_profile_account(profile: dict[str, Any]) -> dict[str, Any]:
+    """Keep joined User internals out of Admin Student/Faculty list responses."""
+    result = {key: value for key, value in profile.items() if key not in {"accounts", "account"}}
+    account = profile.get("account")
+    result["account"] = {key: account.get(key) for key in (
+        "_id", "username", "email", "display_name", "status", "must_change_password", "last_login_at"
+    )} if account else None
+    return result

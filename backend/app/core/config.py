@@ -1,5 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
+from urllib.parse import urlsplit,parse_qs
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,6 +13,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     mongodb_uri: str | None = None
     mongodb_database: str = "attendai_python_dev"
+    cloud_test_mode: bool = False
     enable_dev_academic_api: bool = False
     enable_dev_role_preview: bool = True
     jwt_secret: str = ""
@@ -37,6 +40,7 @@ class Settings(BaseSettings):
     face_recognition_cooldown_seconds: int = 8
     face_liveness_mode: str = "optional"
     face_max_image_bytes: int = 5 * 1024 * 1024
+    face_reference_storage: Literal["auto","local","mongodb"] = "auto"
 
     @field_validator("face_detection_model_path","face_recognition_model_path",mode="before")
     @classmethod
@@ -56,11 +60,20 @@ class Settings(BaseSettings):
         if value not in {"required","optional","disabled"}:raise ValueError("Unsupported liveness mode")
         return value
     model_config = SettingsConfigDict(
-        env_file=Path(__file__).resolve().parents[3] / ".env", extra="ignore"
+        env_file=Path(__file__).resolve().parents[3] / ".env", extra="ignore",hide_input_in_errors=True
     )
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
+        if self.cloud_test_mode:
+            uri=urlsplit(self.mongodb_uri or "")
+            if self.app_env.casefold()!="production" or self.mongodb_database!="attendai_cloud_test":
+                raise ValueError("Cloud testing requires production mode and MONGODB_DATABASE=attendai_cloud_test")
+            if uri.scheme!="mongodb+srv" or not (uri.hostname or "").endswith(".mongodb.net") or uri.path.strip("/") not in {"","attendai_cloud_test"}:
+                raise ValueError("Cloud testing requires an Atlas SRV URI scoped to the cloud test database")
+            query={k.casefold():[v.casefold() for v in values] for k,values in parse_qs(uri.query).items()}
+            if any("false" in query.get(key,[]) for key in ("tls","ssl")) or any("true" in query.get(key,[]) for key in ("tlsinsecure","tlsallowinvalidcertificates","tlsallowinvalidhostnames")):
+                raise ValueError("Cloud database TLS verification must remain enabled")
         if self.app_env.casefold() == "production":
             if not self.mongodb_uri:
                 raise ValueError("MONGODB_URI is required in production")
@@ -69,8 +82,14 @@ class Settings(BaseSettings):
             if self.face_ai_enabled and (len(self.face_embedding_encryption_key) != 32 or self.face_embedding_encryption_key == "replace_with_exactly_32_random_characters"):
                 raise ValueError("A secure 32-character FACE_EMBEDDING_ENCRYPTION_KEY is required in production when face AI is enabled")
             origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
-            if not origins or "*" in origins:
-                raise ValueError("CORS_ORIGINS must be explicitly configured in production (cannot be empty or '*')")
+            if "*" in origins:
+                raise ValueError("CORS_ORIGINS must be explicitly configured without wildcards in production")
+            for origin in origins:
+                parsed=urlsplit(origin)
+                if parsed.scheme!="https" or not parsed.hostname or parsed.username or parsed.password or parsed.path not in {"","/"} or parsed.query or parsed.fragment:
+                    raise ValueError("CORS_ORIGINS entries must be HTTPS browser origins")
+            if self.face_reference_storage=="local":
+                raise ValueError("Production FACE_REFERENCE_STORAGE must use MongoDB, not ephemeral local disk")
         return self
 
 

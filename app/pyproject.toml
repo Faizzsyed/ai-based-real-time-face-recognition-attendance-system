@@ -20,5 +20,10 @@ permissions = ["camera", "photo_library"]
 
 [tool.flet.android]
 
+# HTTPS builds retain this secure default. build_android.ps1 enables HTTP only
+# for an explicitly supplied development URL, then restores this file.
+[tool.flet.android.manifest_application]
+usesCleartextTraffic = "false"
+
 [tool.flet.android.app]
-exclude = ["build", ".venv", "__pycache__", ".pytest_cache", "tests", "test_*.py", "data", "models", "*.onnx", "*.task", "*.apk", "*.aab"]
+exclude = ["build", ".venv", ".env", ".env.*", "__pycache__", ".pytest_cache", "tests", "test_*.py", "data", "models", "*.onnx", "*.task", "*.apk", "*.aab"]

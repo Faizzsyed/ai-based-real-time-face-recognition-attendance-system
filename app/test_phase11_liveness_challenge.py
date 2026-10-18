@@ -21,13 +21,13 @@ def test_blink_turn_left_center_must_pass_in_order():
     value.observe(eye(.04,.3),.5);value.observe(eye(.04,.3),.6);assert value.index==0
     for t,metric in ((.7,.04),(.8,.5),(.9,.04)):value.observe(eye(metric,.02),t)
     assert value.index==1
-    value.observe(eye(.04,.25),1.);value.observe(eye(.04,.25),1.1);assert value.index==2
+    value.observe(eye(.04,.25),1.);value.observe(eye(.04,.25),1.1);value.observe(eye(.04,.25),1.15);assert value.index==2
     value.observe(eye(.04,.02),1.2);value.observe(eye(.04,.02),1.3);assert value.passed
 
 def test_turn_right_and_wrong_action_does_not_pass():
     value=engine((ChallengeType.TURN_RIGHT,ChallengeType.RETURN_CENTER,ChallengeType.BLINK));calibrate(value)
     value.observe(eye(yaw=.3),.5);value.observe(eye(yaw=.3),.6);assert value.index==0
-    value.observe(eye(yaw=-.25),.7);value.observe(eye(yaw=-.25),.8);assert value.index==1
+    value.observe(eye(yaw=-.25),.7);value.observe(eye(yaw=-.25),.8);value.observe(eye(yaw=-.25),.9);assert value.index==1
 
 def test_timeout_and_retry_create_clean_attempt():
     value=engine((ChallengeType.TURN_LEFT,ChallengeType.RETURN_CENTER,ChallengeType.BLINK),pose_timeout=.5);calibrate(value);old=value.attempt_id;value.observe(eye(yaw=0),1.);assert value.failed and value.failure_reason=="LIVENESS_TIMEOUT";value.retry(1.1);assert value.attempt_id!=old and value.index==0 and not value.failed and value.neutral_yaw is None

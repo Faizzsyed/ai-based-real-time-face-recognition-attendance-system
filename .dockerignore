@@ -8,10 +8,12 @@ __pycache__
 env/
 venv/
 .env
+.env.*
 .pytest_cache
 tests/
 app/
-scripts/
+scripts/*
+!scripts/download_face_models.py
 data/
 *.apk
 *.aab
@@ -19,3 +21,9 @@ data/
 .gitignore
 .github
 *.log
+uploads/
+dist/
+backend/tests/
+backend/scripts/
+models/*.onnx
+models/*.task

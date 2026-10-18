@@ -1,6 +1,7 @@
 """Biometric state machine and adaptive development-grade blink challenge."""
 from __future__ import annotations
 import logging,math,statistics,time
+from threading import RLock
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -12,9 +13,31 @@ class FaceObservation:
     timestamp:float;face_count:int;center:tuple[float,float]|None=None;size:float|None=None;quality_ok:bool=False;eyes_closed:bool|None=None;frame_sequence:int=0;frame:bytes|None=None;quality_score:float=0.
 @dataclass(frozen=True)
 class EyeMetric:
-    face_count:int;left:float|None;right:float|None;yaw:float|None=None
+    face_count:int;left:float|None;right:float|None;yaw:float|None=None;mirrored:bool=False
     @property
     def bilateral(self):return min(self.left,self.right) if self.left is not None and self.right is not None else None
+
+
+def head_yaw_from_landmarks(landmarks,width,height,mirrored=False):
+    """Dimensionless nose offset along the eye line; positive means HUMAN left.
+
+    MediaPipe 33/263 are outer eye corners and 1 is the nose. Work in pixels
+    to remove aspect-ratio bias, project along the eye line to reject head roll,
+    and normalize by eye separation. This is a pose proxy, not yaw in degrees.
+    A reflected camera input reverses image x, so reverse that sign explicitly.
+    Display-only mirroring must not change this input flag.
+    """
+    first,second,nose=landmarks[33],landmarks[263],landmarks[1]
+    dx=(second.x-first.x)*width;dy=(second.y-first.y)*height
+    span_squared=dx*dx+dy*dy
+    if not math.isfinite(span_squared) or span_squared<1.:return None
+    if dx<0:dx,dy=-dx,-dy
+    nx=(nose.x-(first.x+second.x)/2)*width;ny=(nose.y-(first.y+second.y)/2)*height
+    yaw=(nx*dx+ny*dy)/span_squared
+    if not math.isfinite(yaw):return None
+    return -yaw if mirrored else yaw
+
+
 class BlinkChallenge:
     """Adaptive temporal OPEN -> CLOSED -> OPEN detector.
 
@@ -112,15 +135,24 @@ class BiometricPipeline:
     def finish_recognition(self,result,now=None):self.state={"identified":BiometricState.IDENTIFIED,"verified":BiometricState.IDENTIFIED,"ambiguous":BiometricState.AMBIGUOUS}.get(result,BiometricState.UNKNOWN);self.cooldown_until=(now if now is not None else time.monotonic())+self.cooldown_seconds;return self.state
     def cooldown(self):self.state=BiometricState.COOLDOWN
 class MediaPipeBlinkDetector:
-    def __init__(self,model_path:Path):
+    def __init__(self,model_path:Path,input_mirrored=False):
+        self._lock=RLock();self._closed=False;self.input_mirrored=bool(input_mirrored)
         from app.services.platform_capabilities import current_platform
         if not current_platform().client_liveness: raise RuntimeError("Client-side MediaPipe liveness is unavailable on Android.")
         import mediapipe as mp
         vision=mp.tasks.vision;options=vision.FaceLandmarkerOptions(base_options=mp.tasks.BaseOptions(model_asset_path=str(model_path)),running_mode=vision.RunningMode.VIDEO,num_faces=2,output_face_blendshapes=True,min_face_detection_confidence=.5,min_face_presence_confidence=.5,min_tracking_confidence=.5);self._mp=mp;self._landmarker=vision.FaceLandmarker.create_from_options(options);self._last_timestamp=0
     def observe(self,bgr,timestamp_ms):
+        with self._lock:
+            if self._closed:return EyeMetric(0,None,None,None)
+            return self._observe(bgr,timestamp_ms)
+    def _observe(self,bgr,timestamp_ms):
         import cv2
         timestamp_ms=max(int(timestamp_ms),self._last_timestamp+1);self._last_timestamp=timestamp_ms;rgb=cv2.cvtColor(bgr,cv2.COLOR_BGR2RGB);result=self._landmarker.detect_for_video(self._mp.Image(image_format=self._mp.ImageFormat.SRGB,data=rgb),timestamp_ms)
         count=len(result.face_blendshapes)
         if count!=1:return EyeMetric(count,None,None,None)
-        scores={x.category_name:x.score for x in result.face_blendshapes[0]};landmarks=result.face_landmarks[0];left=landmarks[33];right=landmarks[263];nose=landmarks[1];eye_distance=max(abs(right.x-left.x),1e-6);yaw=(nose.x-(left.x+right.x)/2)/eye_distance;return EyeMetric(1,float(scores.get("eyeBlinkLeft",0.)),float(scores.get("eyeBlinkRight",0.)),float(yaw))
-    def close(self):self._landmarker.close()
+        scores={x.category_name:x.score for x in result.face_blendshapes[0]}
+        height,width=bgr.shape[:2];yaw=head_yaw_from_landmarks(result.face_landmarks[0],width,height,self.input_mirrored)
+        return EyeMetric(1,float(scores.get("eyeBlinkLeft",0.)),float(scores.get("eyeBlinkRight",0.)),yaw,self.input_mirrored)
+    def close(self):
+        with self._lock:
+            if not self._closed:self._landmarker.close();self._closed=True
