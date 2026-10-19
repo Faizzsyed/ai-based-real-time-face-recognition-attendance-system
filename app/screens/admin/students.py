@@ -7,6 +7,7 @@ import flet as ft
 from app.components.ui import empty_state, metric_card, page_header, status_badge, surface_card
 from app.core.theme import ThemeTokens
 from app.core.design import person_card
+from app.components.v2 import loading_card, error_card
 from app.components.forms import validate, connect_hierarchy, date_field, update
 from app.services.setup_defaults import local_today, username_suggestion
 
@@ -34,9 +35,9 @@ def build_students_page(state: StudentPageState, tokens: ThemeTokens, on_search:
         actions=ft.PopupMenuButton(icon=ft.Icons.MORE_VERT,tooltip="Student actions",items=[
             ft.PopupMenuItem(label,icon=icon,on_click=lambda _,sid=item.get("_id"),action=action:on_action(sid,action))
             for label,icon,action in (("View",ft.Icons.VISIBILITY_OUTLINED,"view"),("Edit profile",ft.Icons.EDIT_OUTLINED,"edit"),("Academic history",ft.Icons.HISTORY,"history"),("Change enrollment",ft.Icons.SWAP_HORIZ,"enrollment"),("Face enrollment",ft.Icons.FACE_RETOUCHING_NATURAL,"face"),("Deactivate" if item.get("status")=="active" else "Activate",ft.Icons.POWER_SETTINGS_NEW,"status"))])
-        rows.append(person_card(item.get("display_name","Student"),f"{item.get('admission_number','')} ? {item.get('email','')}",f"Roll {enrollment.get('roll_number') or 'not assigned'} ? {dict(state.reference_options.get('class_division_id',[])).get(str(enrollment.get('class_division_id')),'Class not available')}",status_badge(str(item.get("status","inactive")).title(),tokens,"success" if item.get("status")=="active" else "warning"),actions,tokens))
-    if state.loading: body: ft.Control = ft.ProgressRing()
-    elif state.error: body = empty_state("Students unavailable", state.error, ft.Icons.ERROR_OUTLINE, tokens)
+        rows.append(person_card(item.get("display_name","Student"),f"{item.get('admission_number','')} · {item.get('email','')}",f"Roll {enrollment.get('roll_number') or 'not assigned'} · {dict(state.reference_options.get('class_division_id',[])).get(str(enrollment.get('class_division_id')),'Class not available')}",status_badge(str(item.get("status","inactive")).title(),tokens,"success" if item.get("status")=="active" else "warning"),actions,tokens))
+    if state.loading: body: ft.Control = loading_card("Loading students…", tokens)
+    elif state.error: body = error_card(state.error, tokens, on_refresh)
     elif not rows: body = empty_state("No students added yet" if not state.search else "No students match your search", "Add your first student to begin building your class roster.", ft.Icons.PEOPLE_OUTLINED, tokens)
     else: body = ft.Column(rows, spacing=8)
     filter_fields = {name: ft.Dropdown(label=label, value=state.filters.get(name) or "", options=[ft.DropdownOption(key="",text="All"),*[ft.DropdownOption(key=k,text=v) for k,v in state.reference_options.get(name,[])]], enable_search=True, col={"xs":12,"md":4}) for name,label in (("academic_year_id","Academic year"),("department_id","Department"),("program_id","Program"),("semester_id","Semester"),("class_division_id","Class / Division"))}
@@ -48,7 +49,7 @@ def build_students_page(state: StudentPageState, tokens: ThemeTokens, on_search:
         ft.ExpansionTile(title=ft.Text("Academic and account filters"), subtitle=ft.Text("Current enrollment only"), controls=[ft.ResponsiveRow([*filter_fields.values(), ft.FilledButton("Apply filters", icon=ft.Icons.FILTER_ALT, on_click=lambda _:on_academic_filter({k:v.value for k,v in filter_fields.items() if v.value}), col={"xs":12,"md":3}), ft.TextButton("Clear", on_click=lambda _:on_academic_filter({}), col={"xs":12,"md":2})])]),
         body,
         *([ft.Row([ft.IconButton(ft.Icons.CHEVRON_LEFT,tooltip="Previous page",disabled=state.page<=1,on_click=lambda _:on_page(state.page-1)),ft.Text(f"Page {state.page} of {max(state.total_pages,1)}"),ft.IconButton(ft.Icons.CHEVRON_RIGHT,tooltip="Next page",disabled=state.page>=state.total_pages,on_click=lambda _:on_page(state.page+1))],alignment=ft.MainAxisAlignment.CENTER)] if on_page else []),
-    ], spacing=16, scroll=ft.ScrollMode.AUTO), padding=24, expand=True, key="admin-students-page")
+    ], spacing=24, scroll=ft.ScrollMode.AUTO), padding=24, expand=True, key="admin-students-page")
 
 
 def build_student_profile_form(record: dict, tokens: ThemeTokens, on_submit: Callable[[dict], None], on_cancel: Callable) -> ft.Control:

@@ -63,7 +63,7 @@ def walk_controls(control: ft.Control | None):
     content = getattr(control, "content", None)
     if isinstance(content, ft.Control):
         yield from walk_controls(content)
-    for child in getattr(control, "controls", []) or []:
+    for child in [*(getattr(control, "controls", []) or []), *(getattr(control, "items", []) or [])]:
         if isinstance(child, ft.Control):
             yield from walk_controls(child)
 
@@ -208,7 +208,8 @@ def test_role_switching_replaces_navigation() -> None:
     student = navigation_labels("Student")
     controller.show_preview("Admin")
 
-    assert "Departments" in admin and "Departments" not in faculty
+    assert "Academic Management" in admin and "Academic Management" not in faculty
+    assert "Departments" not in admin
     assert "Take Attendance" in faculty and "Take Attendance" not in student
     assert "Upcoming Classes" in student and "Upcoming Classes" not in admin
     assert controller.current_role == "Admin"
@@ -260,7 +261,7 @@ def test_responsive_sidebar_for_desktop_tablet_and_phone() -> None:
     tablet_sidebar = next(
         control for control in walk_controls(host.content) if control.key == "role-sidebar"
     )
-    assert tablet_sidebar.visible is False
+    assert tablet_sidebar.visible is True and tablet_sidebar.width == 80
 
     page.width = 390
     controller.handle_resize()

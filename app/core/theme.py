@@ -4,75 +4,37 @@ from collections.abc import Mapping
 
 import flet as ft
 
-LIGHT = {
-    "mode": "light",
-    "background": "#F4F7FB",
-    "surface": "#FFFFFF",
-    "surface_secondary": "#F8FAFC",
-    "surface_accent": "#EEF4FF",
-    "border": "#E2E8F0",
-    "text_primary": "#14213D",
-    "text_secondary": "#64748B",
-    "primary": "#2563EB",
-    "primary_soft": "#DBEAFE",
-    "secondary": "#6D5CE7",
-    "secondary_soft": "#EDE9FE",
-    "success": "#059669",
-    "success_soft": "#D1FAE5",
-    "warning": "#D97706",
-    "warning_soft": "#FEF3C7",
-    "danger": "#DC2626",
-    "danger_soft": "#FEE2E2",
-    "shadow": "#14213D14",
-    "on_accent": "#FFFFFF",
-}
-
-DARK = {
-    "mode": "dark",
-    "background": "#0F172A",
-    "surface": "#172033",
-    "surface_secondary": "#1E293B",
-    "surface_accent": "#172554",
-    "border": "#334155",
-    "text_primary": "#F8FAFC",
-    "text_secondary": "#A8B3C7",
-    "primary": "#60A5FA",
-    "primary_soft": "#1E3A5F",
-    "secondary": "#A78BFA",
-    "secondary_soft": "#3B2F63",
-    "success": "#34D399",
-    "success_soft": "#123D35",
-    "warning": "#FBBF24",
-    "warning_soft": "#493614",
-    "danger": "#F87171",
-    "danger_soft": "#4A2025",
-    "shadow": "#00000033",
-    "on_accent": "#FFFFFF",
-}
-
-# Compatibility aliases for the existing API-status boundary.
-LIGHT["text"] = LIGHT["text_primary"]
-LIGHT["muted"] = LIGHT["text_secondary"]
-DARK["text"] = DARK["text_primary"]
-DARK["muted"] = DARK["text_secondary"]
+from app.core.design import LIGHT, DARK
 
 ThemeTokens = Mapping[str, str]
 
 
-def build_light_theme() -> ft.Theme:
+def _build_theme(tokens):
+    style = ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12),
+                           padding=ft.Padding.symmetric(horizontal=20, vertical=14))
     return ft.Theme(
-        color_scheme_seed=LIGHT["primary"],
-        scaffold_bgcolor=LIGHT["background"],
-        use_material3=True,
+        color_scheme_seed=tokens["primary"], scaffold_bgcolor=tokens["background"], use_material3=True,
+        font_family="Segoe UI",
+        color_scheme=ft.ColorScheme(primary=tokens["primary"], on_primary=tokens["on_accent"],
+            primary_container=tokens["primary_soft"], secondary=tokens["secondary"],
+            secondary_container=tokens["secondary_soft"], surface=tokens["surface"],
+            on_surface=tokens["text_primary"], on_surface_variant=tokens["text_secondary"],
+            outline=tokens["border"], error=tokens["danger"]),
+        filled_button_theme=ft.FilledButtonTheme(style=style),
+        outlined_button_theme=ft.OutlinedButtonTheme(style=style),
+        text_button_theme=ft.TextButtonTheme(style=style),
+        dialog_theme=ft.DialogTheme(bgcolor=tokens["surface"], shape=ft.RoundedRectangleBorder(radius=20),
+            title_text_style=ft.TextStyle(size=20, color=tokens["text_primary"], weight=ft.FontWeight.W_600)),
+        navigation_bar_theme=ft.NavigationBarTheme(height=80, elevation=0, label_text_style=ft.TextStyle(size=11)),
     )
+
+
+def build_light_theme() -> ft.Theme:
+    return _build_theme(LIGHT)
 
 
 def build_dark_theme() -> ft.Theme:
-    return ft.Theme(
-        color_scheme_seed=DARK["primary"],
-        scaffold_bgcolor=DARK["background"],
-        use_material3=True,
-    )
+    return _build_theme(DARK)
 
 
 def tokens_for_mode(mode: ft.ThemeMode) -> ThemeTokens:

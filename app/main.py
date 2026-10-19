@@ -24,9 +24,11 @@ import flet as ft
 from app.components.navigation import (
     build_navigation_drawer,
     build_sidebar,
+    build_bottom_navigation,
     navigation_labels,
 )
 from app.components.ui import api_status_badge, profile_avatar, status_badge
+from app.components.branding import attendai_emblem
 from app.components.camera import CameraPanelState,build_camera_panel
 from app.core.config import get_settings
 from app.core.logging import configure_logging as configure_runtime_logging,log_ui_event
@@ -37,6 +39,9 @@ from app.services.easy_setup import EasySetup
 from app.screens.admin.easy_setup import build_easy_setup
 from app.screens.workspace import build_workspace
 from app.screens.admin.dashboard import build_admin_dashboard
+from app.screens.admin.academic import build_academic_hub
+from app.components.v2 import identity_avatar
+from app.core.design import DESIGN, layout_band
 from app.screens.admin.academic import (
     AcademicPageState,
     NAVIGATION_RESOURCES,
@@ -83,13 +88,20 @@ def build_dashboard(
     attendance_data: dict | None = None,
     dashboard_data: dict | None = None,
     api_connected: bool = False,
+    overview: dict | None = None,
+    on_navigate=None,
+    display_name="Admin",
+    notifications=None,
+    requests=None,
 ) -> ft.Control:
     builders = {
         "Admin": lambda current_tokens: build_admin_dashboard(
-            current_tokens, development_academic_api_enabled, setup_status, on_setup_step, show_development_structure, show_setup_wizard, on_skip_setup, attendance_data, dashboard_data, api_connected
+            current_tokens, development_academic_api_enabled, setup_status, on_setup_step, show_development_structure, show_setup_wizard, on_skip_setup, attendance_data, dashboard_data, api_connected,
+            overview=overview, on_navigate=on_navigate, display_name=display_name, loading=bool((overview or {}).get("loading"))
         ),
-        "Faculty": lambda current_tokens: build_faculty_dashboard(current_tokens, faculty_profile, schedule_data, attendance_data),
-        "Student": lambda current_tokens: build_student_dashboard(current_tokens, student_profile, schedule_data, attendance_data),
+        "Faculty": lambda current_tokens: build_faculty_dashboard(current_tokens, faculty_profile, schedule_data, attendance_data,
+            on_attendance=(lambda _: on_navigate("Take Attendance")) if on_navigate else None, requests=requests),
+        "Student": lambda current_tokens: build_student_dashboard(current_tokens, student_profile, schedule_data, attendance_data, notifications=notifications, requests=requests),
     }
     try:
         return builders[role](tokens)
@@ -142,15 +154,8 @@ def build_public_shell(
             [
                 ft.Container(ft.Row(
                     [
-                        ft.Container(
-                            ft.Icon(ft.Icons.SCHOOL_OUTLINED, size=18, color=tokens["on_accent"]),
-                            width=34,
-                            height=34,
-                            alignment=ft.Alignment.CENTER,
-                            gradient=ft.LinearGradient(colors=[tokens["primary"], tokens["secondary"]]),
-                            border_radius=11,
-                        ),
-                        ft.Text("AI Attendance" if compact else "AI Face Attendance", weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
+                        attendai_emblem(tokens, 34),
+                        ft.Text("AttendAI", weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
                     ],
                     spacing=10,
                 ),col={"xs":8,"sm":6}),
@@ -178,8 +183,8 @@ def build_public_shell(
         # Give the title the remaining width and keep all actions in one menu.
         top_bar.content = ft.Row(
             [
-                ft.Icon(ft.Icons.SCHOOL_OUTLINED, color=tokens["primary"]),
-                ft.Text("AI Attendance", expand=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+                attendai_emblem(tokens, 28),
+                ft.Text("AttendAI", expand=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
                         weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
                 ft.PopupMenuButton(
                     icon=ft.Icons.MORE_VERT,
@@ -201,80 +206,40 @@ def build_public_shell(
     )
 
 
-def build_authenticated_top_bar(
-    role: str,
-    tokens: ThemeTokens,
-    *,
-    api_connected: bool,
-    on_sidebar_toggle: Callable,
-    on_theme_toggle: Callable,
-    on_api_check: Callable,
-    on_logout: Callable | None = None,
-    view_label: str = "Dashboard",
-    unread_count: int = 0,
-    on_notifications: Callable | None = None,
-    compact: bool = False,
-    display_name: str = "",
-) -> ft.Control:
+def build_authenticated_top_bar(role, tokens, *, api_connected, on_sidebar_toggle, on_theme_toggle,
+                                on_api_check, on_logout=None, view_label="Dashboard", unread_count=0,
+                                on_notifications=None, compact=False, display_name="", on_search=None, on_profile=None):
+    profile = ft.Container(identity_avatar(display_name or role, tokens, 18), on_click=on_profile,
+                           tooltip="Open profile", key="profile-action")
+    menu = ft.PopupMenuButton(icon=ft.Icons.MORE_VERT, tooltip="Workspace actions", items=[
+        ft.PopupMenuItem(content=ft.Text("Change theme"), on_click=on_theme_toggle),
+        ft.PopupMenuItem(content=ft.Text("Connected · Check again" if api_connected else "Offline · Retry connection"), on_click=on_api_check),
+        *([ft.PopupMenuItem(content=ft.Text("Sign out"), on_click=on_logout, key="authenticated-logout")] if on_logout else []),
+    ])
+    alerts = ft.IconButton(ft.Icons.NOTIFICATIONS_OUTLINED, tooltip=f"Notifications ({unread_count} unread)",
+                          on_click=on_notifications, badge=str(unread_count) if unread_count else None)
     if compact:
         return ft.Container(ft.Row([
-            ft.IconButton(ft.Icons.MENU,tooltip="Open navigation",on_click=on_sidebar_toggle),
-            ft.Column([ft.Text(view_label,size=17,weight=ft.FontWeight.BOLD,max_lines=1,overflow=ft.TextOverflow.ELLIPSIS),
-                       ft.Text(f"{role} · {display_name or 'Workspace'}",size=12,color=tokens["text_secondary"],max_lines=1,overflow=ft.TextOverflow.ELLIPSIS)],expand=True,spacing=3),
-            ft.IconButton(ft.Icons.NOTIFICATIONS_OUTLINED,tooltip=f"Notifications ({unread_count} unread)",on_click=on_notifications),
-            ft.PopupMenuButton(icon=ft.Icons.MORE_VERT,tooltip="Appearance and connection",items=[
-                ft.PopupMenuItem(content=ft.Text("Change theme"),on_click=on_theme_toggle),
-                ft.PopupMenuItem(content=ft.Text("API connected · Check again" if api_connected else "API offline · Retry"),on_click=on_api_check)]),
-            *([ft.IconButton(ft.Icons.LOGOUT,tooltip="Logout",on_click=on_logout,key="authenticated-logout")] if on_logout else []),
-        ],spacing=0),padding=ft.Padding.symmetric(horizontal=8,vertical=10),bgcolor=tokens["surface"],border=ft.Border.only(bottom=ft.BorderSide(1,tokens["border"])))
-    return ft.Container(
-        content=ft.ResponsiveRow(
-            [
-                ft.Container(
-                    ft.Row(
-                        [
-                            ft.IconButton(ft.Icons.MENU, tooltip="Toggle navigation", on_click=on_sidebar_toggle),
-                            ft.Column(
-                                [
-                                    ft.Text(view_label, size=16 if compact else 17, weight=ft.FontWeight.BOLD, color=tokens["text_primary"],max_lines=1,overflow=ft.TextOverflow.ELLIPSIS),
-                                    ft.Text(f"{role} · {display_name or 'Workspace'}", size=12, color=tokens["text_secondary"]),
-                                ],
-                                spacing=1,
-                                expand=True,
-                            ),
-                        ],
-                        spacing=7,
-                    ),
-                    col={"xs": 12, "md": 6},
-                ),
-                ft.Container(
-                    ft.Row(
-                        [
-                            *([] if compact else [api_status_badge(api_connected, tokens)]),
-                            ft.IconButton(
-                                ft.Icons.DARK_MODE_OUTLINED if tokens["mode"] == "light" else ft.Icons.LIGHT_MODE_OUTLINED,
-                                tooltip="Toggle light/dark theme",
-                                on_click=on_theme_toggle,
-                            ),
-                            ft.Container(ft.IconButton(ft.Icons.NOTIFICATIONS if unread_count else ft.Icons.NOTIFICATIONS_NONE,tooltip=f"Notifications ({unread_count} unread)",on_click=on_notifications),badge=ft.Badge(label=ft.Text(str(unread_count))) if unread_count else None),
-                            profile_avatar(role[:1], tokens),
-                            *([ft.TextButton("Logout", icon=ft.Icons.LOGOUT, on_click=on_logout, key="authenticated-logout")] if on_logout else []),
-                        ],
-                        alignment=ft.MainAxisAlignment.END,
-                        wrap=True,
-                        spacing=2,
-                    ),
-                    col={"xs": 12, "md": 6},
-                ),
-            ],
-            spacing=4,
-            run_spacing=4,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        bgcolor=tokens["surface"],
-        border=ft.Border.only(bottom=ft.BorderSide(1, tokens["border"])),
-    )
+            ft.IconButton(ft.Icons.MENU, tooltip="Open navigation", on_click=on_sidebar_toggle),
+            ft.Text("AttendAI", size=20, weight=ft.FontWeight.BOLD, color=tokens["text_primary"], expand=True),
+            alerts, profile, menu,
+        ], spacing=0), padding=ft.Padding.symmetric(horizontal=8, vertical=10), bgcolor=tokens["surface"],
+            border=ft.Border.only(bottom=ft.BorderSide(1, tokens["border"])), key="mobile-top-bar")
+    left = ft.TextField(hint_text="Search students · press Enter", prefix_icon=ft.Icons.SEARCH, height=48,
+                        text_size=13, on_submit=lambda event: on_search(event.control.value),
+                        border_radius=12, border_color=tokens["border"], filled=True,
+                        fill_color=tokens["surface_secondary"], content_padding=12, expand=True, key="directory-search") if on_search else ft.Text(
+                            view_label, size=17, weight=ft.FontWeight.W_600, expand=True)
+    return ft.Container(ft.Row([
+        ft.IconButton(ft.Icons.MENU, tooltip="Toggle navigation", on_click=on_sidebar_toggle), left,
+        ft.IconButton(ft.Icons.CLOUD_DONE_OUTLINED if api_connected else ft.Icons.CLOUD_OFF_OUTLINED,
+                      icon_color=tokens["success"] if api_connected else tokens["danger"],
+                      tooltip="API connected · Check again" if api_connected else "API offline · Retry", on_click=on_api_check),
+        alerts, profile,
+        ft.Column([ft.Text(display_name or role, size=13, weight=ft.FontWeight.W_600, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                   ft.Text(role, size=11, color=tokens["text_secondary"])], spacing=2, width=140), menu,
+    ], spacing=12), padding=ft.Padding.symmetric(horizontal=24, vertical=16), bgcolor=tokens["surface"],
+        border=ft.Border.only(bottom=ft.BorderSide(1, tokens["border"])), key="desktop-top-bar")
 
 
 class PremiumUiController:
@@ -320,6 +285,8 @@ class PremiumUiController:
         self.academic_state: AcademicPageState | None = None
         self.setup_status_data: dict | None = None
         self.dashboard_data: dict | None = None
+        self.dashboard_overview = {}
+        self.dashboard_loading = False
         self.setup_wizard_visible = True
         self.easy_setup = None
         self._easy_setup_busy = False
@@ -455,11 +422,11 @@ class PremiumUiController:
             self.current_attendance=None;self.load_faculty_attendance() if self.current_role=="Faculty" else self.load_admin_attendance()
         self.leave_attendance(leave)
     @property
-    def compact_layout(self): return (self.page.width or 0)<600
+    def compact_layout(self): return (self.page.width or 0)<DESIGN.phone
 
     def _current_layout_band(self):
         width = self.page.width or 0
-        return 0 if width < 600 else 1 if width < 900 else 2
+        return layout_band(width)
 
     @property
     def tokens(self) -> ThemeTokens:
@@ -490,7 +457,7 @@ class PremiumUiController:
         self.render_current()
 
     async def handle_sidebar_toggle(self, _: ft.ControlEvent | None = None) -> None:
-        if (self.page.width or 0) < 900:
+        if (self.page.width or 0) < DESIGN.desktop:
             result=self.page.show_drawer()
             if inspect.isawaitable(result):await result
             return
@@ -599,6 +566,12 @@ class PremiumUiController:
                 sessions=self.api_client.faculty_attendance_sessions();self.attendance_sessions=(sessions.data or {}).get("items",[]) if sessions.connected else [];self.attendance_data={"sessions":self.attendance_sessions}
             unread=self.api_client.notification_unread_count();self.notification_unread=int((unread.data or {}).get("count",0)) if unread.connected else 0
             self.show_authenticated(role)
+            if role in {"Student", "Faculty"}:
+                self.load_home_communication()
+                self.render_authenticated_shell()
+            if role == "Admin":
+                self.load_dashboard_overview()
+                self.render_authenticated_shell()
         else:
             self.current_screen = "login"
             self.render_public()
@@ -613,7 +586,77 @@ class PremiumUiController:
     def exit_preview(self, _: ft.ControlEvent | None = None) -> None:
         self.show_login()
 
+    def dashboard_action(self, label):
+        if label == "add-student":
+            self.select_navigation("Students")
+            if self.current_screen == "authenticated": self.open_student_create()
+        elif label == "add-faculty":
+            self.select_navigation("Faculty")
+            if self.current_screen == "authenticated": self.open_faculty_form()
+        elif label == "create-timetable":
+            self.select_navigation("Timetable")
+            if self.current_screen == "authenticated": self.open_timetable_form()
+        else:
+            self.select_navigation(label)
+
+    def search_directory(self, value):
+        if self.attendance_dirty:
+            self.leave_attendance(lambda:self.search_directory(value))
+            return
+        self.active_navigation = "Students"
+        self.stop_camera()
+        self.load_students(search=(value or "").strip())
+
+    def load_home_communication(self):
+        if self.current_screen != "authenticated": return
+        notices = self.api_client.notifications(pageSize=5)
+        self.notifications_data = notices.data or {} if notices.connected else {}
+        self.notifications_error = None if notices.connected else "Notifications could not be loaded. Open Notifications to retry."
+        queue = self.api_client.my_attendance_requests(pageSize=20) if self.current_role == "Student" else self.api_client.attendance_request_queue(pageSize=20)
+        self.requests_data = queue.data or {} if queue.connected else {}
+        self.requests_error = None if queue.connected else "Requests could not be loaded. Open Requests to retry."
+
+    def load_dashboard_overview(self):
+        if self.current_screen != "authenticated" or self.current_role != "Admin": return
+        institution = self.api_client.academic_institution()
+        years = self.api_client.list_academic("academic-years", current=True, status="active", pageSize=1)
+        classes = self.api_client.list_academic("classes", status="active", pageSize=1)
+        report = self.api_client.reports_overview("Admin")
+        trend = self.api_client.reports_trend()
+        subjects = self.api_client.reports_subjects("Admin")
+        audit = self.api_client.audit_events(pageSize=5)
+        timetable = self.api_client.list_timetable(status="active", pageSize=100)
+        view = {}
+        if institution.connected: view["institution"] = institution.data or {}
+        if years.connected: view["year"] = next(iter((years.data or {}).get("items") or []), {})
+        if classes.connected: view["class_count"] = (classes.data or {}).get("total", ((classes.data or {}).get("pagination") or {}).get("total", "—"))
+        if report.connected: view["report"] = dict(report.data or {})
+        if trend.connected: view.setdefault("report", {})["trend"] = (trend.data or {}).get("items", [])
+        if subjects.connected: view.setdefault("report", {})["subjects"] = (subjects.data or {}).get("items", [])
+        if audit.connected: view["activity"] = (audit.data or {}).get("items") or []
+        if timetable.connected:
+            entries = (timetable.data or {}).get("items") or []
+            view["timetable_ready"] = bool(entries)
+            # Select today's still-upcoming lectures in the institution's configured timezone.
+            from datetime import datetime
+            from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+            try: now = datetime.now(ZoneInfo(view.get("institution", {}).get("timezone") or "Asia/Kolkata"))
+            except (ZoneInfoNotFoundError, ValueError): now = datetime.now()
+            day = now.strftime("%A").casefold()
+            iso = now.date().isoformat()
+            view["lectures"] = sorted([x for x in entries if x.get("day_of_week") == day and
+                str(x.get("end_time") or "")[:5] >= now.strftime("%H:%M") and
+                (not x.get("effective_from") or str(x["effective_from"])[:10] <= iso) and
+                (not x.get("effective_until") or str(x["effective_until"])[:10] >= iso)], key=lambda x:x.get("start_time", ""))[:5]
+        self.dashboard_overview = view
+
     def select_navigation(self, label: str) -> None:
+        if label == "Academic Management" and self.current_role == "Admin":
+            label = "Academic Years"
+        if label == "Profile" and self.current_role == "Admin":
+            self.active_navigation = label
+            self.render_authenticated_shell()
+            return
         if label == "Easy Setup":
             self.open_easy_setup()
             return
@@ -631,21 +674,27 @@ class PremiumUiController:
             if label in {"Dashboard","Today's Lectures","Timetable","Take Attendance","My Classes","Profile"} and self.current_screen=="authenticated":self.refresh_workspace()
             if label in {"Take Attendance","Attendance History"} and self.current_screen=="authenticated":self.load_faculty_attendance()
             if label=="Reports" and self.current_screen=="authenticated":self.load_reports()
+            if label == "Dashboard" and self.current_screen == "authenticated": self.load_home_communication()
             self.active_navigation=label;self.render_authenticated_shell();return
         if self.current_role=="Student" and label in {"Dashboard","Timetable","Upcoming Classes","Attendance","Subjects","Profile"}:
             self.active_navigation=label
             if label in {"Dashboard","Timetable","Upcoming Classes","Subjects","Profile"} and self.current_screen=="authenticated":self.refresh_workspace()
             if label in {"Dashboard","Attendance"} and self.current_screen=="authenticated":self.load_student_attendance(render=False)
+            if label == "Dashboard" and self.current_screen == "authenticated": self.load_home_communication()
             self.active_navigation=label;self.render_authenticated_shell();return
         if self.current_role != "Admin" or label not in {"Dashboard", "Students", "Faculty", "Timetable", "Attendance", "Face Enrollment", "Reports", "Audit Logs", *NAVIGATION_RESOURCES.keys()}:
             return
         self.active_navigation = label
         if label == "Dashboard":
             if self.current_screen == "authenticated":
+                self.dashboard_loading = True
+                self.render_authenticated_shell()
                 status = self.api_client.academic_setup_status()
                 self.setup_status_data = status.data if status.connected else None
                 dashboard_req = self.api_client.admin_dashboard_metrics()
                 self.dashboard_data = dashboard_req.data if dashboard_req.connected else None
+                self.load_dashboard_overview()
+                self.dashboard_loading = False
             self.academic_state = None
             self.render_authenticated_shell()
             return
@@ -1206,7 +1255,7 @@ class PremiumUiController:
     def review_attendance(self,_=None):
         if not self.current_attendance or self._submitting or self._attendance_saving:return
         summary=self.current_attendance.get("summary") or {}
-        dialog=ft.AlertDialog(modal=True,title=ft.Text("Submit Attendance?"),content=ft.Text(f"Review: {summary.get('present',0)} present, {summary.get('absent',0)} absent, {summary.get('late',0)} late, {summary.get('excused',0)} excused. Submission restricts Faculty editing."),actions=[ft.TextButton("Cancel",on_click=lambda _:self.close_dialog()),ft.FilledButton("Confirm Submit",on_click=self.confirm_attendance)])
+        dialog=ft.AlertDialog(modal=True,title=ft.Text("Review Draft"),content=ft.Text(f"Review: {summary.get('present',0)} present, {summary.get('absent',0)} absent, {summary.get('late',0)} late, {summary.get('excused',0)} excused. Submission restricts Faculty editing."),actions=[ft.TextButton("Cancel",on_click=lambda _:self.close_dialog()),ft.FilledButton("Finalize Attendance",on_click=self.confirm_attendance)])
         self.show_dialog(dialog)
     def confirm_attendance(self,_=None):
         self.close_dialog();self.stop_camera();self.submit_attendance()
@@ -1453,6 +1502,9 @@ class PremiumUiController:
         self.show_dialog(ft.AlertDialog(title=ft.Text("Student import preview"), content=ft.Column([ft.Text(f"Valid: {report.get('valid', 0)} · Invalid: {report.get('invalid', 0)}"), *[ft.Text(error, color=self.tokens["danger"], size=12) for error in errors], ft.Text("Preview performed no database writes.", size=11)], tight=True), actions=[ft.TextButton("Cancel", on_click=lambda _: self.close_dialog()), ft.FilledButton("Confirm Import", disabled=bool(report.get("invalid")), on_click=confirm_import)]))
 
     def select_setup_resource(self, resource: str) -> None:
+        if resource == "timetable":
+            self.select_navigation("Timetable")
+            return
         if resource == "easy-setup":
             self.open_easy_setup()
             return
@@ -1601,7 +1653,7 @@ class PremiumUiController:
                 api_error=self.api_error,
             )
         self.host.content = build_public_shell(
-            content,
+            adapt_view(content, self.page.width or 390, tokens),
             tokens,
             api_connected=self.api_connected,
             on_theme_toggle=self.toggle_theme,
@@ -1623,12 +1675,14 @@ class PremiumUiController:
         if not is_preview and not self.auth_state.is_authenticated:
             raise RuntimeError("Authenticated shell requires a real session.")
         tokens = self.tokens
-        desktop = (self.page.width or 0) >= 900
+        desktop = (self.page.width or 0) >= DESIGN.desktop
+        tablet = DESIGN.phone <= (self.page.width or 0) < DESIGN.desktop
         sidebar = build_sidebar(
             self.current_role,
             tokens,
-            collapsed=self.sidebar_collapsed,
-            visible=desktop,
+            collapsed=self.sidebar_collapsed or tablet,
+            visible=desktop or tablet,
+            institution_name=(self.dashboard_overview.get("institution") or {}).get("short_name") or (self.dashboard_overview.get("institution") or {}).get("name") or "Institution workspace",
             active_label=self.active_navigation,
             on_select=self.select_navigation if self.current_role in {"Admin","Faculty","Student"} else None,
         )
@@ -1652,7 +1706,9 @@ class PremiumUiController:
                 view_label=self.active_navigation,
                 unread_count=self.notification_unread,
                 on_notifications=lambda _:self.select_navigation("Notifications"),
-                compact=self.compact_layout,
+                compact=not desktop,
+                on_search=self.search_directory if self.current_role == "Admin" and not is_preview and desktop else None,
+                on_profile=lambda _:self.select_navigation("Profile"),
                 display_name=(self.auth_state.current_user or {}).get("displayName", "Development preview"),
             )
         ]
@@ -1668,8 +1724,11 @@ class PremiumUiController:
             content=build_requests_page(self.current_role,tokens,self.requests_data,self.requests_loading,self.requests_error,lambda _:self.load_requests(),self.cancel_request,self.review_request,self.open_attendance_request_form if self.current_role=="Student" else None)
         elif self.current_role=="Admin" and self.active_navigation=="Audit Logs":
             content=build_audit_page(tokens,self.audit_data,self.audit_loading,self.audit_error,lambda _:self.load_audit())
+        elif self.current_role == "Admin" and self.active_navigation == "Profile":
+            user = self.auth_state.current_user or {}
+            content=build_workspace("Admin", "Profile", {"display_name":user.get("displayName") or user.get("display_name") or "Admin", "email":user.get("email"), "status":user.get("status", "active")}, None, None, tokens, lambda _:self.select_navigation("Profile"),on_navigate=self.select_navigation)
         elif self.current_role in {"Faculty","Student"} and self.active_navigation in {"My Classes","Subjects","Profile","Timetable","Today's Lectures","Upcoming Classes"}:
-            content=build_workspace(self.current_role,self.active_navigation,self.faculty_profile_data if self.current_role=="Faculty" else self.student_profile_data,self.schedule_data,self.subjects_data,tokens,self.refresh_workspace,self.workspace_error,self.workspace_loading)
+            content=build_workspace(self.current_role,self.active_navigation,self.faculty_profile_data if self.current_role=="Faculty" else self.student_profile_data,self.schedule_data,self.subjects_data,tokens,self.refresh_workspace,self.workspace_error,self.workspace_loading,on_navigate=self.select_navigation)
         elif self.current_role=="Admin" and self.active_navigation=="Timetable" and self.timetable_state is not None:
             content=build_timetable_page(self.timetable_state,tokens,self.set_timetable_view,self.filter_timetable,lambda _:self.open_timetable_form(),self.timetable_action,self.load_timetable)
         elif self.current_role=="Admin" and self.active_navigation=="Attendance":
@@ -1677,7 +1736,7 @@ class PremiumUiController:
         elif self.current_role=="Admin" and self.active_navigation=="Face Enrollment" and self.face_enrollment_state is not None:
             content=build_face_enrollment_page(self.face_enrollment_state,tokens,lambda value:self.load_face_enrollments(search=value),self.filter_face_enrollments,self.open_face_enrollment)
         elif self.current_role=="Faculty" and self.active_navigation in {"Take Attendance","Attendance History"}:
-            camera_panel=build_camera_panel(self.camera_panel_state,tokens,self.start_camera,self.stop_camera,"Face Attendance",on_retry=self.retry_liveness,mobile=self.platform_capabilities.is_android) if self.current_attendance and self.attendance_mode=="face" else None
+            camera_panel=build_camera_panel(self.camera_panel_state,tokens,self.start_camera,self.stop_camera,"Face Attendance",on_retry=self.retry_liveness,mobile=self.platform_capabilities.is_android,compact=self.compact_layout) if self.current_attendance and self.attendance_mode=="face" else None
             content=build_take_attendance(tokens,self.schedule_data,self.attendance_sessions,self.current_attendance,self.start_attendance,self.open_faculty_attendance,self.mark_attendance,self.save_attendance,self.review_attendance,self.attendance_notice,self.attendance_search,self.attendance_status_filter,self.filter_attendance_roster,self.attendance_mode,self.face_attendance_status_data,self.face_attendance_result,self.set_attendance_mode,self.capture_attendance_face,self.face_recognition_mode,self.face_selected_student_id,self.set_face_recognition_mode,self.set_face_selected_student,camera_panel,self.face_reference_image,saving=self._attendance_saving or self._submitting,history_only=self.active_navigation=="Attendance History")
         elif self.current_role=="Student" and self.active_navigation=="Attendance":
             content=ft.Column([ft.Container(ft.FilledButton("Request Correction",icon=ft.Icons.EDIT_NOTE,on_click=self.open_attendance_request_form),padding=ft.Padding.only(left=24,top=12)),build_student_attendance(tokens,self.attendance_data,(self.attendance_data or {}).get("history"),error=self.attendance_notice,on_session=self.open_student_attendance)],spacing=0,expand=True)
@@ -1698,15 +1757,19 @@ class PremiumUiController:
                 on_page=lambda value: self.load_academic_resource(self.academic_state.resource, page=value),
             )
         else:
-            content = build_dashboard(self.current_role, tokens, self.development_academic_api_enabled, self.setup_status_data, self.select_setup_resource, show_development_structure=is_preview, show_setup_wizard=self.setup_wizard_visible, on_skip_setup=self.skip_setup_wizard, student_profile=None if is_preview else self.student_profile_data, faculty_profile=None if is_preview else self.faculty_profile_data, schedule_data=None if is_preview else self.schedule_data, attendance_data=None if is_preview else self.attendance_data, dashboard_data=self.dashboard_data, api_connected=self.api_connected)
+            content = build_dashboard(self.current_role, tokens, self.development_academic_api_enabled, self.setup_status_data, None if is_preview else self.select_setup_resource, show_development_structure=False, show_setup_wizard=self.setup_wizard_visible, on_skip_setup=self.skip_setup_wizard, student_profile=None if is_preview else self.student_profile_data, faculty_profile=None if is_preview else self.faculty_profile_data, schedule_data=None if is_preview else self.schedule_data, attendance_data=None if is_preview else self.attendance_data, dashboard_data=self.dashboard_data, api_connected=self.api_connected, overview={**self.dashboard_overview,"loading":self.dashboard_loading}, on_navigate=None if is_preview else self.dashboard_action, display_name=(self.auth_state.current_user or {}).get("displayName") or "Admin", notifications=self.notifications_data, requests=self.requests_data)
         if self.current_role in {"Faculty","Student"} and self.active_navigation in {"Dashboard","Take Attendance","Attendance History"}:
-            content=ft.Column([ft.Container(ft.Row([ft.Text("Refreshing workspace…" if self.workspace_loading else self.workspace_error or "Live workspace",expand=True,color=tokens["danger"] if self.workspace_error else tokens["text_secondary"],size=12),ft.IconButton(ft.Icons.REFRESH,tooltip="Refresh teaching data",on_click=self.refresh_workspace)],spacing=8),padding=ft.Padding.symmetric(horizontal=16,vertical=2)),content],expand=True,spacing=0)
+            content=ft.Column([ft.Container(ft.Row([ft.Text("Refreshing workspace…" if self.workspace_loading else self.workspace_error or ("Preview · no records loaded" if is_preview else "Live workspace"),expand=True,color=tokens["danger"] if self.workspace_error else tokens["text_secondary"],size=12),ft.IconButton(ft.Icons.REFRESH,tooltip="Refresh workspace",on_click=self.refresh_workspace,disabled=is_preview)],spacing=8),padding=ft.Padding.symmetric(horizontal=16,vertical=2)),content],expand=True,spacing=0)
         if self.current_attendance and self.active_navigation in {"Take Attendance","Attendance History","Attendance"}:
             content=ft.Column([ft.Container(ft.TextButton("Back to sessions",icon=ft.Icons.ARROW_BACK,on_click=self.back_to_sessions),padding=ft.Padding.only(left=12)),content],expand=True,spacing=0)
+        if self.current_role == "Admin" and self.active_navigation in NAVIGATION_RESOURCES and self.academic_state:
+            content = build_academic_hub(content, self.academic_state.resource, tokens, self.select_setup_resource)
         content=adapt_view(content,self.page.width or 390,tokens)
-        shell_controls.append(ft.Row([sidebar, content], spacing=0, expand=True))
-        self.host.content = ft.Column(
-            shell_controls,
+        shell_controls.append(content)
+        bottom = build_bottom_navigation(self.current_role, self.active_navigation, tokens, self.select_navigation) if self.compact_layout else None
+        if bottom: shell_controls.append(bottom)
+        self.host.content = ft.Row(
+            [sidebar, ft.Column(shell_controls, spacing=0, expand=True)],
             spacing=0,
             expand=True,
             key="authenticated-shell",

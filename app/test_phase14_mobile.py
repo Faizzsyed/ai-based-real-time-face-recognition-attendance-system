@@ -25,7 +25,7 @@ def test_compact_public_shell_has_short_title_and_scrollable_body():
     content=build_login(lambda _:None,TOKENS,ft.Text("Offline"),compact=True)
     shell=build_public_shell(content,TOKENS,api_connected=False,on_theme_toggle=lambda _:None,on_api_check=lambda _:None,compact=True)
     values=[getattr(item,"value",None) for item in _walk(shell)]
-    assert "AI Attendance" in values and any(isinstance(item,ft.Column) and item.scroll==ft.ScrollMode.AUTO for item in _walk(shell))
+    assert "AttendAI" in values and any(isinstance(item,ft.Column) and item.scroll==ft.ScrollMode.AUTO for item in _walk(shell))
 def test_compact_splash_and_authenticated_header_construct_without_overflow_primitives():
     assert build_splash(lambda _:None,TOKENS,compact=True).key=="splash-screen"
     assert build_authenticated_top_bar("Student",TOKENS,api_connected=False,on_sidebar_toggle=lambda _:None,on_theme_toggle=lambda _:None,on_api_check=lambda _:None,compact=True)

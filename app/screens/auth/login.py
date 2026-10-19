@@ -5,8 +5,9 @@ from collections.abc import Callable
 import flet as ft
 
 from app.components.ui import status_badge, surface_card
+from app.components.branding import PROJECT_TITLE, attendai_emblem
 from app.core.theme import ThemeTokens
-from app.screens.auth.splash import attendai_emblem
+from app.core.design import RADIUS, TYPOGRAPHY
 
 PHASE_NOTICE = "Preview sessions are UI-only and never create authentication tokens."
 
@@ -15,13 +16,14 @@ def _academic_visual(tokens: ThemeTokens, compact: bool = False) -> ft.Control:
     nodes = [
         (ft.Icons.SCHOOL_OUTLINED, "Academic management"),
         (ft.Icons.FACT_CHECK_OUTLINED, "Attendance intelligence"),
-        (ft.Icons.AUTO_AWESOME_OUTLINED, "AI-assisted workflows"),
+        (ft.Icons.FACE_OUTLINED, "Face recognition attendance"),
     ]
     return ft.Column(
         [
-            ft.Row([attendai_emblem(tokens, 52 if compact else 62), ft.Text("AI Attendance" if compact else "AI Based Face Attendance", size=22 if compact else 24, weight=ft.FontWeight.BOLD, color=tokens["text_primary"])], spacing=12,wrap=True),
-            ft.Text("Intelligent Attendance.\nSmarter Academics.", size=30 if compact else 38, weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
-            ft.Text("One secure foundation for institutional operations, academic insight, and future AI-assisted attendance.", size=14, color=tokens["text_secondary"]),
+            ft.Row([attendai_emblem(tokens, 52 if compact else 62), ft.Text("AttendAI", size=22 if compact else 24, weight=ft.FontWeight.BOLD, color=tokens["text_primary"])], spacing=12,wrap=True),
+            ft.Text(PROJECT_TITLE, size=14, color=tokens["text_secondary"]),
+            ft.Text("Less admin.\nMore learning.", size=30 if compact else 38, weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
+            ft.Text("A simpler way to bring your people, academic schedules, and attendance together.", size=14, color=tokens["text_secondary"]),
             ft.Column(
                 [
                     ft.Row(
@@ -87,8 +89,11 @@ def build_login(
     api_error: str | None = None,
 ) -> ft.Control:
     identifier = ft.TextField(label="Email / Username", prefix_icon=ft.Icons.PERSON_OUTLINED, key="login-identifier")
+    identifier.autofill_hints = [ft.AutofillHint.USERNAME]
     password = ft.TextField(label="Password", prefix_icon=ft.Icons.LOCK_OUTLINED, password=True, can_reveal_password=True, key="login-password")
-    login_button = ft.FilledButton("Signing in..." if auth_loading else "Login", icon=ft.Icons.LOGIN, disabled=True, height=48, key="login-submit")
+    password.autofill_hints = [ft.AutofillHint.PASSWORD]
+    identifier.disabled = password.disabled = auth_loading
+    login_button = ft.FilledButton("Signing in..." if auth_loading else "Sign in", icon=ft.Icons.LOGIN, disabled=True, height=52, key="login-submit")
 
     def validate_fields(_: ft.ControlEvent | None = None) -> None:
         login_button.disabled = auth_loading or not bool((identifier.value or "").strip() and password.value)
@@ -104,7 +109,11 @@ def build_login(
     password.on_submit = submit
     login_button.on_click = submit
     login_controls: list[ft.Control] = [
-        ft.Text("Welcome back", size=27, weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
+        *([
+            ft.Row([attendai_emblem(tokens, 36), ft.Text("AttendAI", size=20, weight=ft.FontWeight.BOLD, color=tokens["text_primary"])], spacing=10),
+            ft.Text(PROJECT_TITLE, size=13, color=tokens["text_secondary"]),
+        ] if compact else []),
+        ft.Text("Your day starts here.", size=28, weight=ft.FontWeight.BOLD, color=tokens["text_primary"]),
         ft.Text("Sign in to continue to your institution workspace.", size=13, color=tokens["text_secondary"]),
         identifier,
         password,
@@ -117,7 +126,8 @@ def build_login(
     if auth_error:
         login_controls.insert(5, ft.Text(auth_error, color=tokens["danger"], size=12, key="login-error"))
     if development_preview_enabled:
-        login_controls.append(_development_panel(on_preview, tokens))
+        login_controls.append(ft.ExpansionTile(title=ft.Text("Development previews", size=12),
+            controls=[_development_panel(on_preview, tokens)], key="development-preview-expander"))
 
     login_card = surface_card(
         ft.Column(login_controls, spacing=10 if compact else 14, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
@@ -126,7 +136,7 @@ def build_login(
         key="login-card",
     )
     return ft.Container(
-        content=ft.ResponsiveRow(
+        content=ft.Container(ft.ResponsiveRow(
             [
                 *([] if compact else [ft.Container(_academic_visual(tokens), col={"xs": 12, "md": 7}, padding=ft.Padding.symmetric(horizontal=18, vertical=24))]),
                 ft.Container(login_card, col={"xs": 12, "md": 5}, padding=ft.Padding.symmetric(horizontal=0 if compact else 8, vertical=12 if compact else 18)),
@@ -135,7 +145,8 @@ def build_login(
             run_spacing=10,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        padding=ft.Padding.symmetric(horizontal=12 if compact else 20, vertical=8 if compact else 14),
+        width=None if compact else 1120),
+        padding=ft.Padding.symmetric(horizontal=12 if compact else 32, vertical=16 if compact else 40),
         bgcolor=tokens["background"],
         alignment=ft.Alignment.CENTER,
         expand=not compact,

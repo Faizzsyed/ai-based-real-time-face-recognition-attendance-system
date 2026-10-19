@@ -191,24 +191,57 @@ def build_academic_management_page(
         ft.Row([page_header(title, "Authenticated Admin academic management", tokens), ft.FilledButton(action_label, icon=ft.Icons.EDIT_OUTLINED if state.resource == "institution" else ft.Icons.ADD, on_click=on_create)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True),
         ft.ResponsiveRow([search, status, *filter_controls], spacing=10, run_spacing=10, visible=state.resource != "institution"),
         surface_card(body, tokens),
-        ft.Row([ft.Text(f"Page {state.page} of {state.total_pages} · {state.total} records", size=11, color=tokens["text_secondary"]), ft.Row([ft.IconButton(ft.Icons.CHEVRON_LEFT, disabled=state.page <= 1, on_click=(lambda _: on_page(state.page - 1)) if on_page else None), ft.IconButton(ft.Icons.CHEVRON_RIGHT, disabled=state.page >= state.total_pages, on_click=(lambda _: on_page(state.page + 1)) if on_page else None)])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, visible=state.resource != "institution"),
+        ft.Row([ft.Text(f"Page {state.page} of {max(state.total_pages,1)} · {state.total} records", size=11, color=tokens["text_secondary"]), ft.Row([ft.IconButton(ft.Icons.CHEVRON_LEFT, disabled=state.page <= 1, on_click=(lambda _: on_page(state.page - 1)) if on_page else None), ft.IconButton(ft.Icons.CHEVRON_RIGHT, disabled=state.page >= state.total_pages, on_click=(lambda _: on_page(state.page + 1)) if on_page else None)])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, visible=state.resource != "institution"),
     ], spacing=16, scroll=ft.ScrollMode.AUTO), padding=24, expand=True, key=f"admin-academic-{state.resource}")
 
 
-def build_setup_wizard(status: dict[str, Any] | None, tokens: ThemeTokens, on_step: Callable[[str], None] | None = None, on_skip: Callable | None = None) -> ft.Control:
-    steps = (("Institution", "institution", "institution"), ("Academic Year", "academic-years", "academicYear"), ("Department", "departments", "department"), ("Program", "programs", "program"), ("Semester", "semesters", "semester"), ("Class / Division", "classes", "class"), ("Subjects", "subjects", "subject"))
-    checks = (status or {}).get("checks", {})
-    tiles = []
-    for index, (label, resource, check_key) in enumerate(steps, 1):
-        complete = bool(checks.get(check_key))
-        tiles.append(ft.Container(ft.Column([ft.Row([ft.CircleAvatar(content=ft.Text(str(index)), radius=14), ft.Text(label, weight=ft.FontWeight.W_600, color=tokens["text_primary"]), status_badge("Done" if complete else "Pending", tokens, "success" if complete else "warning")], spacing=8), ft.TextButton("Configure", on_click=(lambda _, selected=resource: on_step(selected)) if on_step else None)], spacing=6), padding=10, bgcolor=tokens["surface_secondary"], border_radius=12, col={"xs": 12, "md": 6, "xl": 4}))
+def build_setup_wizard(status, tokens, on_step=None, on_skip=None, *, timetable_ready=None):
+    steps = [("Institution", "institution", "institution"), ("Academic Year", "academic-years", "academicYear"),
+             ("Department", "departments", "department"), ("Program", "programs", "program"),
+             ("Semester", "semesters", "semester"), ("Class / Division", "classes", "class"),
+             ("Subjects", "subjects", "subject")]
+    checks = dict((status or {}).get("checks") or {})
+    if timetable_ready is not None:
+        checks["timetable"] = timetable_ready
+        steps.append(("Timetable", "timetable", "timetable"))
+    completed = sum(bool(checks.get(key)) for _, _, key in steps)
+    total = len(steps)
+    complete = status is not None and completed == total
+    tiles = [ft.Container(ft.Row([
+        ft.Icon(ft.Icons.CHECK_CIRCLE if checks.get(key) else ft.Icons.RADIO_BUTTON_UNCHECKED,
+                color=tokens["success"] if checks.get(key) else tokens["text_secondary"], size=18),
+        ft.Text(label, size=13, color=tokens["text_primary"], expand=True),
+        *([ft.Icon(ft.Icons.CHEVRON_RIGHT, size=16, color=tokens["text_secondary"])] if on_step else []),
+    ], spacing=10), padding=ft.Padding.symmetric(vertical=6),
+        on_click=(lambda _, resource=resource: on_step(resource)) if on_step else None,
+        col={"xs":12,"sm":6}) for label,resource,key in steps]
     return surface_card(ft.Column([
-        ft.Row([section_header("Academic Setup", tokens, "Complete each step using the production Admin API."), status_badge((status or {}).get("state", "Incomplete"), tokens, "success" if (status or {}).get("state") == "Ready" else "warning")], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True),
-        *([ft.Text("Academic setup complete", color=tokens["success"])] if (status or {}).get("state") == "Ready" else []),
-        *([ft.FilledButton("Continue Easy Setup", on_click=(lambda _: on_step("easy-setup")) if on_step else None)] if (status or {}).get("state") != "Ready" else []),
-        ft.ResponsiveRow(tiles, spacing=8, run_spacing=8),
-        ft.TextButton("Skip wizard and configure manually", on_click=on_skip),
-    ], spacing=12), tokens, key="academic-setup-wizard")
+        section_header("Academic Setup Complete" if complete else "Academic Setup Progress", tokens,
+                       "Your foundation for a smooth academic year"),
+        ft.Row([ft.Text(f"{completed / total:.0%}" if status else "—", size=32, weight=ft.FontWeight.BOLD,
+                       color=tokens["primary"]), ft.Text("Complete" if status else "Status unavailable", size=12,
+                       color=tokens["text_secondary"])], spacing=8),
+        ft.ProgressBar(value=completed / total if status else 0, color=tokens["secondary"],
+                       bgcolor=tokens["secondary_soft"], bar_height=7, border_radius=8),
+        ft.ResponsiveRow(tiles, spacing=12, run_spacing=0),
+        *([ft.Text("Academic setup complete", color=tokens["success"])] if complete else [
+            ft.FilledButton("Continue Easy Setup", icon=ft.Icons.ARROW_FORWARD,
+                            on_click=(lambda _: on_step("easy-setup")) if on_step else None, disabled=on_step is None)]),
+        *([ft.TextButton("Skip wizard and configure manually", on_click=on_skip)] if on_skip else []),
+    ], spacing=16), tokens, key="academic-setup-wizard")
+
+
+def build_academic_hub(content, resource, tokens, on_resource):
+    """Keep advanced CRUD routes in one discoverable academic workspace."""
+    tabs = ft.Row([ft.OutlinedButton(title, icon=icon,
+        on_click=lambda _, selected=key: on_resource(selected),
+        style=ft.ButtonStyle(bgcolor=tokens["primary_soft"] if key == resource else tokens["surface"],
+                             color=tokens["primary"] if key == resource else tokens["text_secondary"]),
+        key=f"academic-tab-{key}") for key,title,icon in MANAGEMENT_RESOURCES], scroll=ft.ScrollMode.AUTO, spacing=8)
+    return ft.Column([ft.Container(ft.Column([
+        page_header("Academic Management", "Manage your institution and curriculum. Easy Setup guides you through each step.", tokens),
+        tabs], spacing=16), padding=ft.Padding.only(left=24, right=24, top=24, bottom=8)), content],
+        spacing=0, expand=True, key="academic-management-hub")
 
 
 def build_academic_preview_page(resource: str, tokens: ThemeTokens, development_api_enabled: bool = False) -> ft.Control:

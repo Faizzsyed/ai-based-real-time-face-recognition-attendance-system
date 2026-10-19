@@ -57,13 +57,10 @@ def authenticated_admin_controller(error=None):
 
 def test_only_admin_navigation_contains_academic_setup_pages():
     admin = navigation_labels("Admin")
-    for label in ("Institution", "Academic Years", "Departments", "Programs", "Semesters", "Classes & Divisions", "Subjects"):
-        assert label in admin
-        if label != "Subjects":
-            assert label not in navigation_labels("Faculty")
-            assert label not in navigation_labels("Student")
-    # Student "Subjects" is an own-academic view, not the Admin management page.
-    assert "Institution" not in navigation_labels("Faculty") and "Institution" not in navigation_labels("Student")
+    assert "Academic Management" in admin and "Easy Setup" in admin
+    assert "Academic Management" not in navigation_labels("Faculty")
+    assert "Academic Management" not in navigation_labels("Student")
+    assert not {"Institution", "Academic Years", "Departments", "Programs", "Semesters", "Classes & Divisions", "Subjects"}.intersection(admin)
 
 
 def test_real_admin_navigation_loads_production_management_page():

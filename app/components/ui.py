@@ -5,6 +5,7 @@ from collections.abc import Sequence
 import flet as ft
 
 from app.core.theme import ThemeTokens
+from app.core.design import DESIGN, RADIUS, TYPOGRAPHY, SHADOWS, attendance_tone, ATTENDANCE_THRESHOLD
 
 
 def surface_card(
@@ -20,12 +21,12 @@ def surface_card(
         padding=padding,
         bgcolor=tokens["surface"],
         border=ft.Border.all(1, tokens["border"]),
-        border_radius=16,
+        border_radius=DESIGN.card_radius,
         shadow=ft.BoxShadow(
-            blur_radius=10,
+            blur_radius=SHADOWS["card"][0],
             spread_radius=0,
             color=tokens["shadow"],
-            offset=ft.Offset(0, 3),
+            offset=ft.Offset(0, SHADOWS["card"][1]),
         ),
         col=col,
         key=key,
@@ -54,7 +55,7 @@ def status_badge(
 
 def api_status_badge(connected: bool, tokens: ThemeTokens) -> ft.Control:
     return status_badge(
-        "API Connected" if connected else "API Offline",
+        "Connected" if connected else "Offline",
         tokens,
         "success" if connected else "danger",
         ft.Icons.CHECK_CIRCLE_OUTLINED if connected else ft.Icons.ERROR_OUTLINE,
@@ -66,7 +67,7 @@ def page_header(title: str, subtitle: str, tokens: ThemeTokens) -> ft.Control:
         [
             ft.Text(
                 title,
-                size=26,
+                size=TYPOGRAPHY["page_title"],
                 weight=ft.FontWeight.BOLD,
                 color=tokens["text_primary"],
             ),
@@ -84,7 +85,7 @@ def section_header(
     controls = [
         ft.Text(
             title,
-            size=17,
+            size=TYPOGRAPHY["section_title"],
             weight=ft.FontWeight.W_600,
             color=tokens["text_primary"],
         )
@@ -119,13 +120,12 @@ def metric_card(
                             bgcolor=icon_bg,
                             border_radius=12,
                         ),
-                        ft.Icon(ft.Icons.MORE_HORIZ, color=tokens["text_secondary"]),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.Text(
                     value,
-                    size=27,
+                    size=TYPOGRAPHY["metric"],
                     weight=ft.FontWeight.BOLD,
                     color=tokens["text_primary"],
                 ),
@@ -190,8 +190,9 @@ def attendance_progress_card(
     percentage: int,
     status: str,
     tokens: ThemeTokens,
+    *, threshold: float = ATTENDANCE_THRESHOLD,
 ) -> ft.Container:
-    tone = "success" if status == "Safe" else "warning"
+    tone = attendance_tone(percentage, threshold)
     return ft.Container(
         content=ft.Column(
             [
@@ -203,7 +204,7 @@ def attendance_progress_card(
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.ProgressBar(
-                    value=percentage / 100,
+                    value=max(0, min(1, percentage / 100)),
                     color=tokens[tone],
                     bgcolor=tokens[f"{tone}_soft"],
                     border_radius=6,

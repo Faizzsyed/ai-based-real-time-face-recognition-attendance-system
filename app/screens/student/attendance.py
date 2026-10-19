@@ -1,7 +1,9 @@
-﻿"""Student attendance, with real subject labels and finalized session history."""
+"""Student attendance, with real subject labels and finalized session history."""
 import flet as ft
 from app.components.ui import attendance_progress_card, empty_state, metric_card, page_header, section_header, status_badge, surface_card
 from app.core.theme import ThemeTokens
+from app.components.v2 import attendance_hero
+from app.core.design import ATTENDANCE_THRESHOLD
 
 
 def build_student_attendance(tokens: ThemeTokens, data: dict | None, history: list[dict] | None, *,
@@ -12,7 +14,7 @@ def build_student_attendance(tokens: ThemeTokens, data: dict | None, history: li
     summary = data.get("summary") or {}
     percentage = float(summary.get("attendancePercentage", 0))
     eligible = sum(summary.get(key, 0) for key in ("present", "late", "absent"))
-    threshold = float(data.get("threshold", 75))
+    threshold = float(data.get("threshold", ATTENDANCE_THRESHOLD))
     rows = []
     for item in history or []:
         session_id = item.get("session_id") or item.get("sessionId")
@@ -31,20 +33,10 @@ def build_student_attendance(tokens: ThemeTokens, data: dict | None, history: li
         metric_card("Absent", str(summary.get("absent", 0)), ft.Icons.ERROR_OUTLINE, "Classes missed", tokens, tone="danger", col={"xs": 6, "lg": 3}),
         metric_card("Late / Excused", f"{summary.get('late', 0)} / {summary.get('excused', 0)}", ft.Icons.SCHEDULE, "Late counts attended", tokens, tone="warning", col={"xs": 6, "lg": 3}),
     ], spacing=12, run_spacing=12)
-    ring = surface_card(ft.ResponsiveRow([
-        ft.Container(ft.ProgressRing(value=percentage / 100, width=88, height=88,
-                                     color=tokens["success"] if percentage >= threshold else tokens["warning"],
-                                     semantics_label="Overall attendance", semantics_value=percentage), col={"xs": 12, "sm": 3}),
-        ft.Column([
-            ft.Text(f"{percentage:.1f}%" if eligible else "No attendance yet", size=28, weight=ft.FontWeight.BOLD),
-            ft.Text(f"Minimum attendance: {threshold:g}%", color=tokens["text_secondary"]),
-            ft.Text("(Present + Late) / (Present + Late + Absent)", size=12, color=tokens["text_secondary"]),
-            ft.Text("Excused classes are excluded.", size=12, color=tokens["text_secondary"]),
-        ], spacing=8, col={"xs": 12, "sm": 9}),
-    ], spacing=16, run_spacing=12), tokens)
+    ring = attendance_hero(summary, tokens, threshold)
     subject_cards = [attendance_progress_card(item.get("subjectName") or "Subject attendance",
                                               float(item.get("attendancePercentage", 0)),
-                                              "Safe" if float(item.get("attendancePercentage", 0)) >= threshold else "Needs attention", tokens)
+                                              "Safe" if float(item.get("attendancePercentage", 0)) >= threshold else "Needs attention", tokens, threshold=threshold)
                      for item in data.get("subjects", [])]
     return ft.Container(ft.Column([
         page_header("My Attendance", "Your finalized classes, attendance, and correction history.", tokens),

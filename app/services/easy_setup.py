@@ -5,7 +5,7 @@ from app.services.api_client import ApiResult
 from app.services.setup_defaults import semester_payloads
 
 STEPS = (
-    ("institution", "Institution", "College ki basic identity. Ye setup usually sirf ek baar hota hai."),
+    ("institution", "Institution", "Add your institution’s identity. You only need to do this once."),
     ("academic-years", "Academic Year", "June to May dates are suggested for you. Use the calendar to change them."),
     ("departments", "Department", "Your academic department. Its short code helps suggest names later."),
     ("programs", "Program", "The degree offered by your department, such as B.Tech ECS."),

@@ -75,6 +75,8 @@ def test_successful_draft_save_precedes_final_submission():
 def test_student_navigation_fetches_new_attendance_and_history(target):
     controller, _, host = controller_for("Student")
     controller.api_client = Mock()
+    controller.api_client.notifications.return_value = ApiResult(True, {"items": []})
+    controller.api_client.my_attendance_requests.return_value = ApiResult(True, {"items": []})
     controller.api_client.student_attendance_summary.return_value = ApiResult(True, {"summary": {"attendancePercentage": 75}})
     controller.api_client.student_attendance_history.return_value = ApiResult(True, {"items": [{"session_id": "new-session", "status": "absent"}]})
     controller.student_profile_data = {"display_name": "Student"}

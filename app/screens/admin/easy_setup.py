@@ -3,6 +3,7 @@ import flet as ft
 
 from app.components.forms import date_field, time_field, validate, set_error, update
 from app.components.ui import surface_card, status_badge
+from app.core.design import DESIGN, RADIUS
 from app.services.easy_setup import STEPS, LINKS, record_id, record_label
 from app.services.setup_defaults import (academic_year_suggestion, program_suggestion, class_name_suggestion,
                                          employee_id_suggestion, username_suggestion, local_today)
@@ -44,13 +45,13 @@ def build_easy_setup(state, tokens, *, redraw, run, go_step, dashboard, faculty_
         resource, title, helper = STEPS[state.step]
         selected = state.chosen(resource)
         reuse = bool(selected) and not state.creating and not state.editing
-        heading = [ft.Row([text("AttendAI Easy Setup",size=20,weight=ft.FontWeight.BOLD),status_badge(f"{state.step+1} / 10",tokens,"primary")],wrap=True,alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+        heading = [ft.Row([text("Guided Academic Setup",size=20,weight=ft.FontWeight.BOLD),status_badge(f"{state.step+1} / 10",tokens,"primary")],wrap=True,alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                    ft.ProgressBar(value=(state.step + 1)/10,color=tokens["secondary"]),text(title,size=28,weight=ft.FontWeight.BOLD),text(helper,size=14)]
         progress=[]
         for index,(key,label,_) in enumerate(STEPS):
             done=bool(state.chosen(key)) if key!="teaching" else bool(state.timetable)
             progress.append(ft.TextButton(f"{'✓' if done else '●' if index==state.step else '○'} {label}",on_click=lambda _,step=index:go_step(step),disabled=working))
-        heading.append(ft.Row(progress,wrap=True,spacing=0))
+        heading.append(ft.Row(progress,scroll=ft.ScrollMode.AUTO,spacing=4))
         content=[]
         if state.loading or working:content.extend([ft.ProgressBar(),text("Working… Your saved records are kept.")])
         if state.error:content.append(ft.Text(state.error,color=tokens["danger"],key="easy-setup-error"))
@@ -193,5 +194,5 @@ def build_easy_setup(state, tokens, *, redraw, run, go_step, dashboard, faculty_
         if reuse and resource!="teaching" and not missing:
             navigation.append(button("Next · Use selected record",lambda _:run(state.advance),primary=True))
         navigation.append(button("Return to Dashboard",lambda _:dashboard()))
-        body=surface_card(ft.Column([*heading,ft.Divider(),*content,ft.Row(navigation,wrap=True,spacing=8)],spacing=16),tokens)
+        body=surface_card(ft.Column([*heading,ft.Divider(),*content,ft.Row(navigation,wrap=True,spacing=8)],spacing=20),tokens,padding=24)
     return ft.SafeArea(ft.Container(ft.Column([ft.Container(body,width=960)],scroll=ft.ScrollMode.AUTO,expand=True,horizontal_alignment=ft.CrossAxisAlignment.CENTER),padding=16,expand=True),expand=True,key="admin-easy-setup")
